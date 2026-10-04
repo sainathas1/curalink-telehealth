@@ -1,0 +1,6 @@
+{
+  "name": "CuraLink Telehealth Registration",
+  "description": "Secure Telehealth portal registration for patients and medical practitioners powered by Firebase Authentication and Firestore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -178,6 +178,7 @@ export default function TelehealthRegistration() {
         fullName: trimmedName,
         email: trimmedEmail,
         role: role,
+        isVerified: false,
         createdAt: serverTimestamp(),
         hasCompletedOnboarding: role === 'Patient' ? false : true,
       };
@@ -294,6 +295,8 @@ export default function TelehealthRegistration() {
           fullName: resolvedName,
           email: resolvedEmail,
           role: role,
+          isVerified: false,
+          hasCompletedOnboarding: role === 'Patient' ? false : true,
           createdAt: serverTimestamp(),
         };
         if (resolvedPhone) {

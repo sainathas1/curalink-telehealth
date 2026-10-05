@@ -40,6 +40,8 @@ import {
   updateDoc,
   onSnapshot,
   setDoc,
+  query,
+  where,
 } from 'firebase/firestore';
 
 const AUTHORIZED_ADMIN_EMAIL = 'sainathas8788@gmail.com';
@@ -49,10 +51,10 @@ interface DoctorUser {
   uid: string;
   fullName: string;
   email: string;
-  licenseNumber: string;
+  licenseNumber?: string;
   specialty?: string;
   role: string;
-  isVerified: boolean;
+  isVerified?: boolean;
   verifiedAt?: string;
   createdAt?: string;
 }
@@ -127,84 +129,112 @@ export default function AdminMasterCommandCenterPage() {
     if (!isAuthorized) return;
 
     setDataLoading(true);
-    const usersCol = collection(db, 'users');
+    // Queries strictly matching the exact PascalCase role casing used during registration ('Doctor' and 'Patient')
+    const doctorsQuery = query(collection(db, 'users'), where('role', '==', 'Doctor'));
+    const patientsQuery = query(collection(db, 'users'), where('role', '==', 'Patient'));
 
-    const unsubscribeSnapshot = onSnapshot(
-      usersCol,
-      (snapshot) => {
-        const docsList: DoctorUser[] = [];
-        const patsList: PatientUser[] = [];
-
-        snapshot.docs.forEach((docSnap) => {
-          const data = docSnap.data();
-          const role = (data.role || '').toLowerCase();
-
-          if (role === 'doctor') {
-            docsList.push({
-              id: docSnap.id,
-              uid: data.uid || docSnap.id,
-              fullName: data.fullName || data.name || data.displayName || 'Dr. Clinician',
-              email: data.email || 'N/A',
-              licenseNumber: data.licenseNumber || data.medicalLicense || 'Pending Submission',
-              specialty: data.specialty || 'General Tele-Medicine',
-              role: data.role || 'Doctor',
-              isVerified: data.isVerified === true,
-              verifiedAt: data.verifiedAt,
-              createdAt: data.createdAt
-                ? typeof data.createdAt === 'string'
-                  ? data.createdAt
-                  : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
-                : 'Recent',
-            });
-          } else if (role === 'patient') {
-            const hasHardware = data.lastSyncedTemperature !== undefined || !!data.deviceModel || !!data.hardwareId;
-            const deterministicHardwareId = data.hardwareId || (hasHardware ? `USB-IOT-${docSnap.id.slice(0, 8).toUpperCase()}` : undefined);
-
-            patsList.push({
-              id: docSnap.id,
-              uid: data.uid || docSnap.id,
-              fullName: data.fullName || data.name || data.displayName || 'Patient User',
-              email: data.email || 'N/A',
-              role: data.role || 'Patient',
-              hasCompletedOnboarding: data.hasCompletedOnboarding === true,
-              bloodGroup: data.bloodGroup,
-              knownAllergies: data.knownAllergies,
-              chronicConditions: data.chronicConditions,
-              currentMedications: data.currentMedications,
-              isDeactivated: data.isDeactivated === true,
-              lastSyncedTemperature: data.lastSyncedTemperature,
-              lastSyncedAt: data.lastSyncedAt,
-              temperatureStatus: data.temperatureStatus,
-              deviceModel: data.deviceModel,
-              hardwareId: deterministicHardwareId,
-              createdAt: data.createdAt
-                ? typeof data.createdAt === 'string'
-                  ? data.createdAt
-                  : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
-                : 'Recent',
-            });
-          }
-        });
-
-        setDoctors(docsList);
-        setPatients(patsList);
+    let doctorsLoaded = false;
+    let patientsLoaded = false;
+    const checkLoadingDone = () => {
+      if (doctorsLoaded && patientsLoaded) {
         setDataLoading(false);
+      }
+    };
+
+    const unsubscribeDoctors = onSnapshot(
+      doctorsQuery,
+      (snapshot) => {
+        const docsList: DoctorUser[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          // Data fallback: if isVerified is missing or undefined, default to false
+          const isVerified = data.isVerified === true;
+          return {
+            id: docSnap.id,
+            uid: data.uid || docSnap.id,
+            fullName: (data.fullName || data.name || data.displayName || 'Dr. Clinician').trim(),
+            email: (data.email || 'N/A').trim(),
+            licenseNumber: (data.licenseNumber || data.medicalLicense || '').trim(),
+            specialty: (data.specialty || 'General Tele-Medicine').trim(),
+            role: data.role || 'Doctor',
+            isVerified: isVerified,
+            verifiedAt: data.verifiedAt,
+            createdAt: data.createdAt
+              ? typeof data.createdAt === 'string'
+                ? data.createdAt
+                : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
+              : 'Recent',
+          };
+        });
+        setDoctors(docsList);
+        doctorsLoaded = true;
+        checkLoadingDone();
       },
       (error) => {
-        console.error('Error fetching users in Master Command Center:', error);
-        setDataLoading(false);
+        console.error('Error fetching doctors in Master Command Center:', error);
+        doctorsLoaded = true;
+        checkLoadingDone();
       }
     );
 
-    return () => unsubscribeSnapshot();
+    const unsubscribePatients = onSnapshot(
+      patientsQuery,
+      (snapshot) => {
+        const patsList: PatientUser[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          const hasHardware = data.lastSyncedTemperature !== undefined || !!data.deviceModel || !!data.hardwareId;
+          const deterministicHardwareId = data.hardwareId || (hasHardware ? `USB-IOT-${docSnap.id.slice(0, 8).toUpperCase()}` : undefined);
+
+          return {
+            id: docSnap.id,
+            uid: data.uid || docSnap.id,
+            fullName: (data.fullName || data.name || data.displayName || 'Patient User').trim(),
+            email: (data.email || 'N/A').trim(),
+            role: data.role || 'Patient',
+            hasCompletedOnboarding: data.hasCompletedOnboarding === true,
+            bloodGroup: data.bloodGroup,
+            knownAllergies: data.knownAllergies,
+            chronicConditions: data.chronicConditions,
+            currentMedications: data.currentMedications,
+            isDeactivated: data.isDeactivated === true,
+            lastSyncedTemperature: data.lastSyncedTemperature,
+            lastSyncedAt: data.lastSyncedAt,
+            temperatureStatus: data.temperatureStatus,
+            deviceModel: data.deviceModel,
+            hardwareId: deterministicHardwareId,
+            createdAt: data.createdAt
+              ? typeof data.createdAt === 'string'
+                ? data.createdAt
+                : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
+              : 'Recent',
+          };
+        });
+        setPatients(patsList);
+        patientsLoaded = true;
+        checkLoadingDone();
+      },
+      (error) => {
+        console.error('Error fetching patients in Master Command Center:', error);
+        patientsLoaded = true;
+        checkLoadingDone();
+      }
+    );
+
+    return () => {
+      unsubscribeDoctors();
+      unsubscribePatients();
+    };
   }, [isAuthorized]);
+
+
 
   // Doctor Verification Action (Approve / Revoke Toggle)
   const handleToggleVerification = async (doctor: DoctorUser) => {
     if (actionDoctorId) return;
     setActionDoctorId(doctor.id);
 
-    const newVerifiedState = !doctor.isVerified;
+    // Fallback: If doctor.isVerified is missing or undefined, default toggle state to false (so toggle sets to true)
+    const isCurrentlyVerified = doctor.isVerified === true;
+    const newVerifiedState = !isCurrentlyVerified;
 
     try {
       const docRef = doc(db, 'users', doctor.id);
@@ -216,8 +246,8 @@ export default function AdminMasterCommandCenterPage() {
 
       setSuccessToast(
         newVerifiedState
-          ? `Privileges Granted: Dr. ${doctor.fullName} is now verified.`
-          : `Privileges Revoked: Dr. ${doctor.fullName} set to unverified status.`
+          ? `Privileges Granted: Dr. ${doctor.fullName || 'Clinician'} is now verified.`
+          : `Privileges Revoked: Dr. ${doctor.fullName || 'Clinician'} set to unverified status.`
       );
       setTimeout(() => setSuccessToast(null), 4000);
     } catch (err: any) {
@@ -274,11 +304,15 @@ export default function AdminMasterCommandCenterPage() {
 
     const q = doctorSearch.toLowerCase().trim();
     if (!q) return true;
+    const fullName = (doc.fullName || '').toLowerCase();
+    const email = (doc.email || '').toLowerCase();
+    const license = (doc.licenseNumber || '').toLowerCase();
+    const specialty = (doc.specialty || '').toLowerCase();
     return (
-      doc.fullName.toLowerCase().includes(q) ||
-      doc.email.toLowerCase().includes(q) ||
-      doc.licenseNumber.toLowerCase().includes(q) ||
-      (doc.specialty && doc.specialty.toLowerCase().includes(q))
+      fullName.includes(q) ||
+      email.includes(q) ||
+      license.includes(q) ||
+      specialty.includes(q)
     );
   });
 
@@ -289,11 +323,15 @@ export default function AdminMasterCommandCenterPage() {
 
     const q = patientSearch.toLowerCase().trim();
     if (!q) return true;
+    const fullName = (pt.fullName || '').toLowerCase();
+    const email = (pt.email || '').toLowerCase();
+    const deviceModel = (pt.deviceModel || '').toLowerCase();
+    const hardwareId = (pt.hardwareId || '').toLowerCase();
     return (
-      pt.fullName.toLowerCase().includes(q) ||
-      pt.email.toLowerCase().includes(q) ||
-      (pt.deviceModel && pt.deviceModel.toLowerCase().includes(q)) ||
-      (pt.hardwareId && pt.hardwareId.toLowerCase().includes(q))
+      fullName.includes(q) ||
+      email.includes(q) ||
+      deviceModel.includes(q) ||
+      hardwareId.includes(q)
     );
   });
 
@@ -719,18 +757,19 @@ export default function AdminMasterCommandCenterPage() {
                                     : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
                                 }`}
                               >
-                                {doc.fullName
+                                {(doc.fullName || 'Dr. Clinician')
                                   .split(' ')
+                                  .filter(Boolean)
                                   .map((n) => n[0])
                                   .join('')
                                   .slice(0, 2)
-                                  .toUpperCase()}
+                                  .toUpperCase() || 'DR'}
                               </div>
                               <div>
                                 <div className="font-semibold text-white text-xs group-hover:text-teal-300 transition-colors">
-                                  {doc.fullName}
+                                  {doc.fullName?.trim() || 'Dr. Clinician'}
                                 </div>
-                                <div className="text-[11px] text-slate-400">{doc.specialty || 'General Practitioner'}</div>
+                                <div className="text-[11px] text-slate-400">{doc.specialty?.trim() || 'General Tele-Medicine'}</div>
                               </div>
                             </div>
                           </td>
@@ -739,17 +778,22 @@ export default function AdminMasterCommandCenterPage() {
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-2 font-mono text-[11px] text-slate-300">
                               <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                              <a href={`mailto:${doc.email}`} className="hover:text-teal-300 hover:underline">
-                                {doc.email}
+                              <a
+                                href={doc.email && doc.email !== 'N/A' ? `mailto:${doc.email}` : '#'}
+                                className="hover:text-teal-300 hover:underline"
+                              >
+                                {doc.email?.trim() || 'No email provided'}
                               </a>
                             </div>
                           </td>
 
-                          {/* License Number */}
+                          {/* License Number: with fallback for empty/undefined */}
                           <td className="py-4 px-6">
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700/80 font-mono text-[11px] text-teal-300">
-                              <FileBadge className="w-3.5 h-3.5 text-teal-400" />
-                              <span>{doc.licenseNumber}</span>
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700/80 font-mono text-[11px]">
+                              <FileBadge className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                              <span className={doc.licenseNumber && doc.licenseNumber.trim() ? 'text-teal-300' : 'text-slate-400 italic'}>
+                                {doc.licenseNumber && doc.licenseNumber.trim() ? doc.licenseNumber.trim() : 'Pending Submission'}
+                              </span>
                             </div>
                           </td>
 
@@ -916,16 +960,17 @@ export default function AdminMasterCommandCenterPage() {
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-3">
                               <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center font-bold text-cyan-300 text-xs shrink-0">
-                                {pt.fullName
+                                {(pt.fullName || 'Patient User')
                                   .split(' ')
+                                  .filter(Boolean)
                                   .map((n) => n[0])
                                   .join('')
                                   .slice(0, 2)
-                                  .toUpperCase()}
+                                  .toUpperCase() || 'PT'}
                               </div>
                               <div>
                                 <div className="font-semibold text-white text-xs group-hover:text-cyan-300 transition-colors flex items-center gap-1.5">
-                                  <span>{pt.fullName}</span>
+                                  <span>{pt.fullName?.trim() || 'Patient User'}</span>
                                   {pt.bloodGroup && pt.bloodGroup !== 'Not specified' && (
                                     <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
                                       {pt.bloodGroup}
@@ -943,8 +988,11 @@ export default function AdminMasterCommandCenterPage() {
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-2 font-mono text-[11px] text-slate-300">
                               <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                              <a href={`mailto:${pt.email}`} className="hover:text-cyan-300 hover:underline">
-                                {pt.email}
+                              <a
+                                href={pt.email && pt.email !== 'N/A' ? `mailto:${pt.email}` : '#'}
+                                className="hover:text-cyan-300 hover:underline"
+                              >
+                                {pt.email?.trim() || 'No email provided'}
                               </a>
                             </div>
                           </td>

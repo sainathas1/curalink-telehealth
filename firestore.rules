@@ -38,10 +38,18 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
+      // Admin clearance: allow admin email (sainathas8788@gmail.com) full read and write access to the entire users collection
+      allow read, write: if isAdmin();
+
+      // Standard user access
       allow get, list: if isSignedIn();
       allow create: if isSignedIn();
-      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow update: if isSignedIn() && request.auth.uid == userId;
       allow delete: if isAdmin();
+
+      match /{allChildren=**} {
+        allow read, write: if isAdmin();
+      }
     }
   }
 }

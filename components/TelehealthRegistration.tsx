@@ -56,7 +56,6 @@ export interface UserProfileData {
 
 const FIREBASE_PROJECT_ID = (firebaseConfig as { projectId?: string }).projectId || 'gen-lang-client-0885497074';
 const FIREBASE_AUTH_SETTINGS_URL = `https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/providers`;
-const FIREBASE_AUTH_DOMAINS_URL = `https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/settings`;
 
 export default function TelehealthRegistration() {
   const [fullName, setFullName] = useState('');
@@ -73,9 +72,6 @@ export default function TelehealthRegistration() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isOperationNotAllowed, setIsOperationNotAllowed] = useState(false);
-  const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
-  const [isIpAddress, setIsIpAddress] = useState(false);
-  const [currentHost, setCurrentHost] = useState('');
 
   // Active registered user / session state
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
@@ -86,15 +82,6 @@ export default function TelehealthRegistration() {
   const [authMode, setAuthMode] = useState<'register' | 'login'>('register');
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      setCurrentHost(hostname);
-      const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) && hostname !== '127.0.0.1';
-      if (isIp) {
-        setIsIpAddress(true);
-      }
-    }
-
     testConnection();
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -132,7 +119,6 @@ export default function TelehealthRegistration() {
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsOperationNotAllowed(false);
-    setIsUnauthorizedDomain(false);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -140,7 +126,6 @@ export default function TelehealthRegistration() {
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsOperationNotAllowed(false);
-    setIsUnauthorizedDomain(false);
 
     // Validation
     const trimmedName = fullName.trim();
@@ -247,7 +232,6 @@ export default function TelehealthRegistration() {
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsOperationNotAllowed(false);
-    setIsUnauthorizedDomain(false);
 
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !password) {
@@ -288,20 +272,6 @@ export default function TelehealthRegistration() {
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsOperationNotAllowed(false);
-    setIsUnauthorizedDomain(false);
-
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) && hostname !== '127.0.0.1';
-      if (isIp) {
-        setIsUnauthorizedDomain(true);
-        setErrorMessage(
-          `Google OAuth strictly blocks raw IP addresses (${hostname}). Please navigate to http://localhost:3000 to sign in with Google.`
-        );
-        return;
-      }
-    }
-
     setIsLoading(true);
 
     try {
@@ -361,9 +331,6 @@ export default function TelehealthRegistration() {
       if (err instanceof Error) {
         if (err.message.includes('auth/popup-closed-by-user')) {
           friendly = 'Google sign-in popup was closed before completing.';
-        } else if (err.message.includes('auth/unauthorized-domain')) {
-          friendly = `Firebase Error (auth/unauthorized-domain): Domain "${typeof window !== 'undefined' ? window.location.hostname : 'current domain'}" is not in the Authorized Domains list.`;
-          setIsUnauthorizedDomain(true);
         } else if (err.message.includes('auth/operation-not-allowed')) {
           friendly = 'Google sign-in provider is not enabled in Firebase Authentication.';
           setIsOperationNotAllowed(true);
@@ -701,73 +668,6 @@ export default function TelehealthRegistration() {
                   </div>
                 )}
 
-                {/* Special Helper for auth/unauthorized-domain */}
-                {isUnauthorizedDomain && (
-                  <div className="mb-5 p-4 rounded-2xl bg-amber-50 border border-amber-200/90 text-amber-900 text-xs space-y-3 animate-fadeIn">
-                    <div className="flex items-start gap-2.5">
-                      <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-bold text-amber-900 text-sm">
-                          {isIpAddress
-                            ? `Network IP Detected (${currentHost}:3000)`
-                            : `Authorize "${currentHost || 'localhost'}" in Firebase Console`}
-                        </p>
-                        {isIpAddress ? (
-                          <div className="space-y-2.5 mt-1.5">
-                            <p className="text-amber-800 leading-relaxed">
-                              Firebase and Google OAuth <strong>strictly block raw IP addresses</strong> (like <code className="bg-amber-100/90 font-mono font-bold px-1.5 py-0.5 rounded">{currentHost}</code>) for security reasons. You cannot add an IP address to the Firebase Authorized Domains list.
-                            </p>
-                            <p className="font-semibold text-teal-900">
-                              To use Google Authentication, please open this app at <strong>localhost:3000</strong>:
-                            </p>
-                            <div className="pt-1">
-                              <a
-                                href="http://localhost:3000"
-                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-700 text-white font-bold text-xs hover:bg-teal-800 shadow-sm transition-all"
-                              >
-                                Switch to http://localhost:3000 &rarr;
-                              </a>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-1.5 mt-1">
-                            <p className="text-amber-800 leading-relaxed">
-                              Firebase blocks Google OAuth logins from domains that are not explicitly whitelisted. Because your app is running locally at <code className="bg-amber-100 font-bold px-1 py-0.5 rounded">localhost:3000</code>, you need to add <code className="bg-amber-100 font-bold px-1 py-0.5 rounded">localhost</code> to your authorized domains list:
-                            </p>
-                            <ol className="list-decimal list-inside space-y-1.5 mt-2 font-medium text-amber-900">
-                              <li>
-                                Open{' '}
-                                <a
-                                  href={FIREBASE_AUTH_DOMAINS_URL}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-teal-700 underline font-bold inline-flex items-center gap-1 hover:text-teal-800"
-                                >
-                                  Firebase Console &rarr; Authentication &rarr; Settings
-                                  <ExternalLink className="w-3 h-3 inline" />
-                                </a>
-                              </li>
-                              <li>In the <strong>Authorized domains</strong> section, click <strong>Add domain</strong></li>
-                              <li>Enter <code className="bg-amber-100/90 px-1.5 py-0.5 rounded font-mono font-bold">localhost</code> and click <strong>Add</strong></li>
-                              <li>
-                                Also verify <strong>Google</strong> is enabled under{' '}
-                                <a
-                                  href={FIREBASE_AUTH_SETTINGS_URL}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-teal-700 underline font-bold inline-flex items-center gap-1 hover:text-teal-800"
-                                >
-                                  Sign-in providers
-                                  <ExternalLink className="w-3 h-3 inline" />
-                                </a>
-                              </li>
-                            </ol>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Success Banner */}
                 {successMessage && (

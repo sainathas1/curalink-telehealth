@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTelehealth } from '../../context/TelehealthContext';
 import { UserRole, UserProfile } from '../../lib/types';
@@ -40,16 +40,6 @@ export default function AuthPage() {
   const [specialty, setSpecialty] = useState('Cardiology & Intensive Care');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isIpOrigin, setIsIpOrigin] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const host = window.location.hostname;
-      if (host !== 'localhost' && host !== '127.0.0.1' && /^[0-9.]+$/.test(host)) {
-        setIsIpOrigin(true);
-      }
-    }
-  }, []);
 
   const handleSuccessRedirect = (profile: UserProfile) => {
     setAuthenticatedProfile(profile);
@@ -141,10 +131,10 @@ export default function AuthPage() {
 
       handleSuccessRedirect(profile);
     } catch (err: any) {
-      if (err.code === 'auth/unauthorized-domain') {
-        setError('Google OAuth is only authorized for localhost. Switch to http://localhost:3000');
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('Google sign-in popup was closed before completing.');
       } else {
-        setError(err.message || 'Google Sign-in failed. Please use demo account.');
+        setError(err.message || 'Google Sign-in failed. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -207,21 +197,6 @@ export default function AuthPage() {
             </div>
           </div>
 
-          {/* Localhost IP helper alert if needed */}
-          {isIpOrigin && (
-            <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-amber-800 flex items-start gap-2 text-[11px]">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
-              <div>
-                <p className="font-bold">Browsing on IP Address</p>
-                <p className="text-amber-700 mt-0.5">
-                  Google OAuth disallows raw IPs. Switch to{' '}
-                  <a href="http://localhost:3000/auth" className="font-bold underline text-amber-900">
-                    http://localhost:3000/auth
-                  </a>
-                </p>
-              </div>
-            </div>
-          )}
 
           {error && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-start gap-2">

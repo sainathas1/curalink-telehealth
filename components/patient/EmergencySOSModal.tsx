@@ -22,7 +22,7 @@ export function EmergencySOSModal({
   isOpen,
   onClose,
   telemetry,
-  patientName = 'Sarah Jenkins',
+  patientName = 'Patient',
 }: EmergencySOSModalProps) {
   const [countdown, setCountdown] = useState(5);
   const [isDispatched, setIsDispatched] = useState(false);

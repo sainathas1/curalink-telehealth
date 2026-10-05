@@ -38,15 +38,20 @@ export function VitalsMonitor({
   onOpenSimulator,
   isSimulating,
 }: VitalsMonitorProps) {
+  const isStandby = !telemetry.sensorConnected || telemetry.heartRate === 0;
+
   // Temperature conversion
-  const formattedTemp =
-    temperatureUnit === 'F'
-      ? `${((telemetry.temperature * 9) / 5 + 32).toFixed(1)}°F`
-      : `${telemetry.temperature.toFixed(1)}°C`;
+  const formattedTemp = isStandby
+    ? '--'
+    : temperatureUnit === 'F'
+    ? `${((telemetry.temperature * 9) / 5 + 32).toFixed(1)}°F`
+    : `${telemetry.temperature.toFixed(1)}°C`;
 
   // Status badge styling helper
-  const getBadgeStyle = (status: 'normal' | 'elevated' | 'critical') => {
+  const getBadgeStyle = (status: 'normal' | 'elevated' | 'critical' | 'standby') => {
     switch (status) {
+      case 'standby':
+        return 'bg-slate-100 text-slate-600 border-slate-200';
       case 'critical':
         return 'bg-rose-100 text-rose-800 border-rose-200 animate-pulse';
       case 'elevated':
@@ -58,6 +63,7 @@ export function VitalsMonitor({
   };
 
   const getMetricStatus = (key: 'hr' | 'spo2' | 'temp') => {
+    if (isStandby) return 'standby';
     if (key === 'hr') {
       if (telemetry.heartRate >= 120 || telemetry.heartRate < 50) return 'critical';
       if (telemetry.heartRate > 100 || telemetry.heartRate < 60) return 'elevated';
@@ -91,16 +97,16 @@ export function VitalsMonitor({
             </h2>
             <span
               className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${getBadgeStyle(
-                telemetry.status
+                isStandby ? 'standby' : telemetry.status
               )}`}
             >
-              {telemetry.status.toUpperCase()}
+              {isStandby ? 'STANDBY / AWAITING FEED' : telemetry.status.toUpperCase()}
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1 flex items-center gap-2">
-            <span>Node: <strong className="font-mono text-slate-700">{telemetry.deviceId}</strong></span>
+            <span>Node: <strong className="font-mono text-slate-700">{isStandby ? 'Awaiting Device' : telemetry.deviceId}</strong></span>
             <span>•</span>
-            <span>Sync: <strong className="text-teal-600 font-semibold">Every 2s</strong></span>
+            <span>Status: <strong className={isStandby ? 'text-slate-500' : 'text-teal-600 font-semibold'}>{isStandby ? 'Listening to Firebase' : 'Live Syncing'}</strong></span>
           </p>
         </div>
 
@@ -147,7 +153,7 @@ export function VitalsMonitor({
       </div>
 
       {/* Critical Alert Warning Banner */}
-      {telemetry.status === 'critical' && (
+      {!isStandby && telemetry.status === 'critical' && (
         <div className="bg-rose-50 border-l-4 border-rose-600 p-4 rounded-2xl shadow-sm flex items-start gap-3.5 animate-pulse">
           <div className="p-2 rounded-xl bg-rose-100 text-rose-600 shrink-0">
             <AlertTriangle className="w-5 h-5" />
@@ -172,7 +178,7 @@ export function VitalsMonitor({
       )}
 
       {/* Elevated Warning Banner */}
-      {telemetry.status === 'elevated' && (
+      {!isStandby && telemetry.status === 'elevated' && (
         <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-2xl shadow-sm flex items-start gap-3.5">
           <div className="p-2 rounded-xl bg-amber-100 text-amber-700 shrink-0">
             <AlertTriangle className="w-5 h-5" />
@@ -195,13 +201,13 @@ export function VitalsMonitor({
               Heart Rate
             </span>
             <div className="w-8 h-8 rounded-xl bg-rose-50 flex items-center justify-center text-rose-500">
-              <Heart className="w-4 h-4 fill-rose-500 animate-pulse" />
+              <Heart className={`w-4 h-4 fill-rose-500 ${isStandby ? '' : 'animate-pulse'}`} />
             </div>
           </div>
 
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-slate-900 font-mono tracking-tight">
-              {telemetry.heartRate}
+              {isStandby ? '--' : telemetry.heartRate}
             </span>
             <span className="text-xs font-semibold text-slate-500">BPM</span>
           </div>
@@ -227,7 +233,7 @@ export function VitalsMonitor({
 
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-slate-900 font-mono tracking-tight">
-              {telemetry.spo2.toFixed(1)}
+              {isStandby ? '--' : telemetry.spo2.toFixed(1)}
             </span>
             <span className="text-xs font-semibold text-slate-500">%</span>
           </div>
@@ -278,14 +284,14 @@ export function VitalsMonitor({
 
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-slate-900 font-mono tracking-tight">
-              {telemetry.systolic}/{telemetry.diastolic}
+              {isStandby ? '--/--' : `${telemetry.systolic}/${telemetry.diastolic}`}
             </span>
             <span className="text-xs font-semibold text-slate-500">mmHg</span>
           </div>
 
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-teal-50 text-teal-700 border-teal-200">
-              OPTIMAL
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${isStandby ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-teal-50 text-teal-700 border-teal-200'}`}>
+              {isStandby ? 'STANDBY' : 'OPTIMAL'}
             </span>
             <span className="text-[11px] text-slate-400 font-medium">Norm: &lt;120/&lt;80</span>
           </div>
@@ -295,20 +301,20 @@ export function VitalsMonitor({
       {/* Sensor Hardware Health & Battery Strip */}
       <div className="bg-slate-50 rounded-2xl border border-slate-200/80 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <CheckCircle2 className={`w-4 h-4 ${isStandby ? 'text-slate-400' : 'text-emerald-600'}`} />
           <span className="text-slate-700 font-medium">
-            IoT PPG & Thermistor Sensor Probe Contact: <strong className="text-emerald-700">Optimal Skin Contact</strong>
+            IoT Biosensor Stream: <strong className={isStandby ? 'text-slate-600' : 'text-emerald-700'}>{isStandby ? 'Standby (Awaiting Firebase telemetry feed)' : 'Optimal Node Contact'}</strong>
           </span>
         </div>
 
         <div className="flex items-center gap-4 text-slate-500">
           <div className="flex items-center gap-1.5">
             <BatteryCharging className="w-4 h-4 text-teal-600" />
-            <span>Battery: <strong className="font-mono text-slate-700">{telemetry.batteryLevel}%</strong></span>
+            <span>Battery: <strong className="font-mono text-slate-700">{isStandby ? 'Standby' : `${telemetry.batteryLevel}%`}</strong></span>
           </div>
           <div className="flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-amber-500" />
-            <span>Signal Quality: <strong className="text-slate-700">99.4% (SNR High)</strong></span>
+            <span>Signal Quality: <strong className="text-slate-700">{isStandby ? 'Standby' : 'Optimal (SNR High)'}</strong></span>
           </div>
         </div>
       </div>

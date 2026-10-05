@@ -75,7 +75,24 @@ export function PatientDirectory({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
-              {filtered.map((pt) => (
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
+                        <Users className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-sm font-semibold text-slate-800 mb-1">
+                        No patients found
+                      </h4>
+                      <p className="text-xs text-slate-400 max-w-sm">
+                        {search ? `No patient profiles match "${search}".` : 'There are currently no assigned patients in your clinical roster.'}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((pt) => (
                 <tr
                   key={pt.id}
                   className="hover:bg-slate-50/70 transition-colors cursor-pointer"
@@ -152,7 +169,8 @@ export function PatientDirectory({
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))
+            )}
             </tbody>
           </table>
         </div>

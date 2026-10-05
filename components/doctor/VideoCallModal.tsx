@@ -37,7 +37,7 @@ export function VideoCallModal({
   appointment,
   telemetry,
   onOpenEHR,
-  doctorName = 'Dr. Marcus Vance, MD',
+  doctorName = 'Attending Physician',
   role = 'Doctor',
   currentUser,
 }: VideoCallModalProps) {
@@ -63,17 +63,17 @@ export function VideoCallModal({
 
   // Safe fallback if appointment is null or being loaded
   const currentAppointment: Appointment = appointment || {
-    id: 'quick-telehealth-session',
-    patientId: 'patient_sarah_jenkins_01',
-    patientName: 'Sarah Jenkins',
-    doctorId: 'doctor_vance_01',
-    doctorName: doctorName,
-    doctorSpecialty: 'Cardiology & Intensive Care',
+    id: `telehealth-session-${Date.now()}`,
+    patientId: isPatient ? (currentUser?.uid || 'patient') : 'patient',
+    patientName: isPatient ? (currentUser?.fullName || 'Patient') : 'Patient',
+    doctorId: isPatient ? 'attending_physician' : (currentUser?.uid || 'doctor'),
+    doctorName: isPatient ? doctorName : (currentUser?.fullName || doctorName),
+    doctorSpecialty: 'Telehealth Consultation',
     date: 'Today',
     time: 'Now',
     type: 'Video Call',
     status: 'In Progress',
-    symptoms: 'Urgent telemetry triage review session.',
+    symptoms: 'Telehealth clinical consultation session.',
   };
 
   const formatTimer = (seconds: number) => {

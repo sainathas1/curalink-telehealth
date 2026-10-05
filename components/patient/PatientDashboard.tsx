@@ -69,11 +69,10 @@ export function PatientDashboard({
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-              Welcome back, {user.fullName.split(' ')[0]}
+              Welcome back, {user?.fullName ? user.fullName.split(' ')[0] : 'Patient'}
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl">
-              Your continuous IoT biomedical telemetry stream is active. Your assigned cardiologist is{' '}
-              <strong className="text-teal-200">Dr. Marcus Vance, MD</strong>.
+              Continuous IoT biomedical telemetry monitoring and encrypted virtual clinical consultations.
             </p>
           </div>
 
@@ -126,7 +125,9 @@ export function PatientDashboard({
               </div>
             ) : (
               <div className="py-6 text-center text-xs text-slate-400">
-                No upcoming appointments scheduled.
+                <Calendar className="w-6 h-6 text-slate-300 mx-auto mb-1 stroke-1" />
+                <p className="font-semibold text-slate-600">No upcoming appointments</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Schedule a consultation to meet with a doctor.</p>
               </div>
             )}
           </div>
@@ -145,7 +146,7 @@ export function PatientDashboard({
                 onClick={() => onNavigateTab('appointments')}
                 className="w-full py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               >
-                <span>View Appointments</span>
+                <span>{nextAppointment ? 'View Appointments' : 'Book Consultation'}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
@@ -172,17 +173,24 @@ export function PatientDashboard({
                 <span className="text-xs text-slate-500 font-medium">Medications Active</span>
               </div>
 
-              <div className="space-y-1.5">
-                {activePrescriptions.slice(0, 2).map((rx) => (
-                  <div
-                    key={rx.id}
-                    className="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs"
-                  >
-                    <span className="font-bold text-slate-800 truncate">{rx.medicationName}</span>
-                    <span className="text-[11px] text-teal-700 font-semibold">{rx.dosage}</span>
-                  </div>
-                ))}
-              </div>
+              {activePrescriptions.length > 0 ? (
+                <div className="space-y-1.5">
+                  {activePrescriptions.slice(0, 2).map((rx) => (
+                    <div
+                      key={rx.id}
+                      className="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs"
+                    >
+                      <span className="font-bold text-slate-800 truncate">{rx.medicationName}</span>
+                      <span className="text-[11px] text-teal-700 font-semibold">{rx.dosage}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-3 text-center text-xs text-slate-400">
+                  <p className="font-semibold text-slate-600">No active prescriptions</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Clinical medications will appear here.</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -206,7 +214,9 @@ export function PatientDashboard({
               </span>
               <div
                 className={`w-2.5 h-2.5 rounded-full ${
-                  telemetry.status === 'critical'
+                  telemetry.heartRate === 0
+                    ? 'bg-slate-300'
+                    : telemetry.status === 'critical'
                     ? 'bg-rose-500 animate-ping'
                     : telemetry.status === 'elevated'
                     ? 'bg-amber-500'
@@ -215,45 +225,55 @@ export function PatientDashboard({
               />
             </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                <Heart className="w-4 h-4 text-rose-500 mx-auto mb-1 animate-pulse" />
-                <span className="text-sm font-black text-slate-900 font-mono block">
-                  {telemetry.heartRate}
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium">BPM</span>
-              </div>
+            {telemetry.heartRate > 0 || telemetry.sensorConnected ? (
+              <>
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <Heart className="w-4 h-4 text-rose-500 mx-auto mb-1 animate-pulse" />
+                    <span className="text-sm font-black text-slate-900 font-mono block">
+                      {telemetry.heartRate}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">BPM</span>
+                  </div>
 
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                <Droplets className="w-4 h-4 text-cyan-500 mx-auto mb-1" />
-                <span className="text-sm font-black text-slate-900 font-mono block">
-                  {telemetry.spo2.toFixed(1)}%
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium">SpO2</span>
-              </div>
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <Droplets className="w-4 h-4 text-cyan-500 mx-auto mb-1" />
+                    <span className="text-sm font-black text-slate-900 font-mono block">
+                      {telemetry.spo2.toFixed(1)}%
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">SpO2</span>
+                  </div>
 
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                <Thermometer className="w-4 h-4 text-amber-500 mx-auto mb-1" />
-                <span className="text-sm font-black text-slate-900 font-mono block">
-                  {telemetry.temperature.toFixed(1)}°
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium">Temp</span>
-              </div>
-            </div>
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <Thermometer className="w-4 h-4 text-amber-500 mx-auto mb-1" />
+                    <span className="text-sm font-black text-slate-900 font-mono block">
+                      {telemetry.temperature.toFixed(1)}°
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">Temp</span>
+                  </div>
+                </div>
 
-            <div className="mt-3 text-center">
-              <span
-                className={`inline-block px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                  telemetry.status === 'critical'
-                    ? 'bg-rose-100 text-rose-800'
-                    : telemetry.status === 'elevated'
-                    ? 'bg-amber-100 text-amber-800'
-                    : 'bg-emerald-100 text-emerald-800'
-                }`}
-              >
-                Vitals Status: {telemetry.status}
-              </span>
-            </div>
+                <div className="mt-3 text-center">
+                  <span
+                    className={`inline-block px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      telemetry.status === 'critical'
+                        ? 'bg-rose-100 text-rose-800'
+                        : telemetry.status === 'elevated'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}
+                  >
+                    Vitals Status: {telemetry.status}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="py-6 text-center text-xs text-slate-400">
+                <Activity className="w-6 h-6 text-slate-300 mx-auto mb-1 stroke-1" />
+                <p className="font-semibold text-slate-600">Awaiting Telemetry Stream</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Connect wearable sensor to start monitoring.</p>
+              </div>
+            )}
           </div>
 
           <div className="mt-4 pt-3 border-t border-slate-100">
@@ -286,22 +306,29 @@ export function PatientDashboard({
             </button>
           </div>
 
-          <div className="mt-3 space-y-2">
-            {records.slice(0, 3).map((rec) => (
-              <div
-                key={rec.id}
-                className="p-3 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors flex items-center justify-between text-xs"
-              >
-                <div>
-                  <h5 className="font-bold text-slate-800">{rec.title}</h5>
-                  <p className="text-[11px] text-slate-400">{rec.facility} • {rec.date}</p>
+          {records.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {records.slice(0, 3).map((rec) => (
+                <div
+                  key={rec.id}
+                  className="p-3 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors flex items-center justify-between text-xs"
+                >
+                  <div>
+                    <h5 className="font-bold text-slate-800">{rec.title}</h5>
+                    <p className="text-[11px] text-slate-400">{rec.facility} • {rec.date}</p>
+                  </div>
+                  <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">
+                    {rec.type}
+                  </span>
                 </div>
-                <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">
-                  {rec.type}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-8 text-center text-xs text-slate-400">
+              <p className="font-semibold text-slate-600">No medical records found</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Uploaded diagnostic files will appear here.</p>
+            </div>
+          )}
         </div>
 
         {/* Patient Care Team & Emergency Hotline */}
@@ -314,13 +341,13 @@ export function PatientDashboard({
 
             <div className="p-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/10 space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-teal-200">Dr. Marcus Vance, MD</span>
+                <span className="text-xs font-bold text-teal-200">CuraLink Medical Directorate</span>
                 <span className="text-[10px] font-bold bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full">
-                  On Duty
+                  24/7 On-Duty
                 </span>
               </div>
-              <p className="text-[11px] text-slate-300">Chief of Telehealth Cardiology</p>
-              <p className="text-[10px] text-slate-400">Direct Tele-Unit Ext: #4409</p>
+              <p className="text-[11px] text-slate-300">Board-Certified Telehealth Clinicians</p>
+              <p className="text-[10px] text-slate-400">Encrypted Clinical Consultation Network</p>
             </div>
 
             <p className="text-xs text-slate-300">

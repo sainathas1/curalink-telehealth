@@ -16,7 +16,7 @@ export default function DoctorWardRoute() {
   return (
     <MultiPatientMonitor
       patients={patientDirectory}
-      liveSarahTelemetry={telemetry}
+      liveTelemetry={telemetry}
       onStartVideoCall={openVideoCall}
       onOpenEHR={openEHR}
       onOpenSimulator={openSimulator}

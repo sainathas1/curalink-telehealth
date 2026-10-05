@@ -3,20 +3,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { LiveTelemetryPayload, VitalHistoryPoint } from '../lib/types';
 import {
-  INITIAL_LIVE_TELEMETRY,
-  MOCK_VITALS_24H_TREND,
-} from '../lib/mock-data';
-import {
   createHardwareStreamSimulator,
   subscribeToFirebaseTelemetry,
   playAlertChime,
   SimulationMode,
+  INITIAL_EMPTY_TELEMETRY,
 } from '../lib/iot-service';
 
-export function useTelemetry(patientId: string = 'patient_sarah_jenkins_01') {
-  const [telemetry, setTelemetry] = useState<LiveTelemetryPayload>(INITIAL_LIVE_TELEMETRY);
-  const [history, setHistory] = useState<VitalHistoryPoint[]>(MOCK_VITALS_24H_TREND);
-  const [isSimulating, setIsSimulating] = useState<boolean>(true);
+export function useTelemetry(patientId: string = '') {
+  const [telemetry, setTelemetry] = useState<LiveTelemetryPayload>(INITIAL_EMPTY_TELEMETRY);
+  const [history, setHistory] = useState<VitalHistoryPoint[]>([]);
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [simulationMode, setSimulationMode] = useState<SimulationMode>('normal');
   const [audioAlertsEnabled, setAudioAlertsEnabled] = useState<boolean>(true);
   const [temperatureUnit, setTemperatureUnit] = useState<'C' | 'F'>('C');
@@ -37,22 +34,24 @@ export function useTelemetry(patientId: string = 'patient_sarah_jenkins_01') {
       }
     }
 
-    // Append to real-time trend history (keep last 30 points)
-    const timeLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setHistory((prev) => {
-      const next = [
-        ...prev,
-        {
-          time: timeLabel,
-          heartRate: payload.heartRate,
-          spo2: payload.spo2,
-          temperature: payload.temperature,
-          systolic: payload.systolic,
-          diastolic: payload.diastolic,
-        },
-      ];
-      return next.slice(-24); // Keep last 24 points for clean chart
-    });
+    // Only append to real-time trend history if telemetry has valid readings
+    if (payload.heartRate > 0 || payload.spo2 > 0) {
+      const timeLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setHistory((prev) => {
+        const next = [
+          ...prev,
+          {
+            time: timeLabel,
+            heartRate: payload.heartRate,
+            spo2: payload.spo2,
+            temperature: payload.temperature,
+            systolic: payload.systolic,
+            diastolic: payload.diastolic,
+          },
+        ];
+        return next.slice(-24); // Keep last 24 points for clean chart
+      });
+    }
   }, [audioAlertsEnabled, lastAlertTime]);
 
   // Setup Firebase Listener

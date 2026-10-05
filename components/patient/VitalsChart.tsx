@@ -147,20 +147,37 @@ export function VitalsChart({ history, temperatureUnit = 'C' }: VitalsChartProps
         </span>
       </div>
 
-      {/* Recharts Area Container */}
-      <div className="w-full h-64 mt-2">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-            <defs>
-              <linearGradient id="vitalGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={activeConfig.color} stopOpacity={0.35} />
-                <stop offset="95%" stopColor={activeConfig.secondaryColor} stopOpacity={0.0} />
-              </linearGradient>
-              <linearGradient id="diastolicGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#818CF8" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#818CF8" stopOpacity={0.0} />
-              </linearGradient>
-            </defs>
+      {/* Recharts Area Container or Empty State */}
+      {chartData.length === 0 ? (
+        <div className="w-full h-64 mt-2 rounded-xl bg-slate-50/50 border border-dashed border-slate-200 flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 mb-3">
+            <Activity className="w-6 h-6 animate-pulse" />
+          </div>
+          <h4 className="text-sm font-semibold text-slate-800 mb-1">
+            Awaiting Telemetry Data Stream
+          </h4>
+          <p className="text-xs text-slate-500 max-w-sm mb-3">
+            No historical vital readings recorded yet. Once your IoT biosensor node or Firebase telemetry stream begins transmitting, real-time trends will graph here automatically.
+          </p>
+          <div className="flex items-center gap-2 text-[11px] font-medium text-teal-700 bg-teal-50/80 px-3 py-1 rounded-full border border-teal-200/50">
+            <span className="w-2 h-2 rounded-full bg-teal-500 animate-ping" />
+            Listening to Firebase Telemetry
+          </div>
+        </div>
+      ) : (
+        <div className="w-full h-64 mt-2">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="vitalGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={activeConfig.color} stopOpacity={0.35} />
+                  <stop offset="95%" stopColor={activeConfig.secondaryColor} stopOpacity={0.0} />
+                </linearGradient>
+                <linearGradient id="diastolicGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#818CF8" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#818CF8" stopOpacity={0.0} />
+                </linearGradient>
+              </defs>
 
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
 
@@ -240,6 +257,7 @@ export function VitalsChart({ history, temperatureUnit = 'C' }: VitalsChartProps
           </AreaChart>
         </ResponsiveContainer>
       </div>
+      )}
     </div>
   );
 }

@@ -18,12 +18,14 @@ interface MedicalRecordsListProps {
   records: MedicalRecord[];
   onUploadRecord: (record: MedicalRecord) => void;
   patientName: string;
+  patientId?: string;
 }
 
 export function MedicalRecordsList({
   records,
   onUploadRecord,
   patientName,
+  patientId,
 }: MedicalRecordsListProps) {
   const [selectedRecord, setSelectedRecord] = useState<MedicalRecord | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -37,13 +39,13 @@ export function MedicalRecordsList({
     e.preventDefault();
     const newRec: MedicalRecord = {
       id: `rec_${Date.now()}`,
-      patientId: 'patient_sarah_jenkins_01',
-      date: 'Today, Oct 4',
+      patientId: patientId || 'patient_user',
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       type: newType,
-      title: newTitle || 'Blood Chemistry & Biomarkers',
-      doctorName: 'Dr. Marcus Vance, MD',
+      title: newTitle || 'Lab Diagnostics Report',
+      doctorName: 'Attending Physician',
       facility: newFacility,
-      fileSize: '2.4 MB (PDF)',
+      fileSize: '1.8 MB (PDF)',
       summary: newSummary || 'Patient-uploaded diagnostics summary for doctor evaluation.',
     };
 
@@ -79,8 +81,28 @@ export function MedicalRecordsList({
         </button>
       </div>
 
-      {/* Record Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Record Cards or Empty State */}
+      {records.length === 0 ? (
+        <div className="py-12 px-6 rounded-2xl bg-white border border-slate-200/80 flex flex-col items-center justify-center text-center shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
+            <FileText className="w-6 h-6" />
+          </div>
+          <h4 className="text-sm font-semibold text-slate-800 mb-1">
+            No medical records found
+          </h4>
+          <p className="text-xs text-slate-500 max-w-sm mb-4">
+            You don't have any uploaded medical records or lab reports yet. You can upload diagnostic PDFs or pathology reports anytime.
+          </p>
+          <button
+            onClick={() => setIsUploadOpen(true)}
+            className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Upload First Document</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {records.map((rec) => (
           <div
             key={rec.id}
@@ -131,9 +153,10 @@ export function MedicalRecordsList({
                 </a>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Record View Modal */}
       {selectedRecord && (

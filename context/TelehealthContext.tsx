@@ -1,16 +1,10 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useTelemetry } from '../hooks/useTelemetry';
-import {
-  MOCK_APPOINTMENTS,
-  MOCK_DOCTOR_APPOINTMENTS_QUEUE,
-  MOCK_PRESCRIPTIONS,
-  MOCK_MEDICAL_RECORDS,
-  MOCK_PATIENT_DIRECTORY,
-  MOCK_DOCTOR_USER,
-} from '../lib/mock-data';
+import { db } from '../lib/firebase';
+import { collection, doc, setDoc, query, where, onSnapshot } from 'firebase/firestore';
 import {
   UserProfile,
   UserRole,
@@ -30,9 +24,9 @@ interface TelehealthContextType {
   setRole: (r: UserRole) => void;
   toggleRole: () => void;
   handleLogout: () => void;
-  switchToPatientDemo: () => void;
-  switchToDoctorDemo: () => void;
   setAuthenticatedProfile: (profile: UserProfile) => void;
+  isLoading: boolean;
+  isAuthenticated: boolean;
 
   // IoT Telemetry
   telemetry: LiveTelemetryPayload;
@@ -88,54 +82,167 @@ const TelehealthContext = createContext<TelehealthContextType | null>(null);
 
 export function TelehealthProvider({ children }: { children: ReactNode }) {
   const authState = useAuth();
-  const telemetryState = useTelemetry('patient_sarah_jenkins_01');
+  const telemetryState = useTelemetry(authState.currentUser?.uid || '');
 
-  // Collections
-  const [patientAppointments, setPatientAppointments] = useState<Appointment[]>(MOCK_APPOINTMENTS);
-  const [doctorAppointmentsQueue, setDoctorAppointmentsQueue] = useState<Appointment[]>(MOCK_DOCTOR_APPOINTMENTS_QUEUE);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>(MOCK_PRESCRIPTIONS);
-  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>(MOCK_MEDICAL_RECORDS);
-  const [patientDirectory, setPatientDirectory] = useState<PatientDirectoryItem[]>(MOCK_PATIENT_DIRECTORY);
+  // Collections initialized to clean empty states
+  const [patientAppointments, setPatientAppointments] = useState<Appointment[]>([]);
+  const [doctorAppointmentsQueue, setDoctorAppointmentsQueue] = useState<Appointment[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [patientDirectory, setPatientDirectory] = useState<PatientDirectoryItem[]>([]);
 
   // Modals
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
   const [activeCallAppointment, setActiveCallAppointment] = useState<Appointment | null>(null);
 
   const [isEHRModalOpen, setIsEHRModalOpen] = useState(false);
-  const [targetEhrPatientName, setTargetEhrPatientName] = useState('Sarah Jenkins');
+  const [targetEhrPatientName, setTargetEhrPatientName] = useState('');
 
   const [isSimulatorDrawerOpen, setIsSimulatorDrawerOpen] = useState(false);
   const [isESP32GuideOpen, setIsESP32GuideOpen] = useState(false);
   const [isEmergencySOSOpen, setIsEmergencySOSOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  const addAppointment = (apt: Appointment) => {
+  // Real-time Firestore Listeners
+  useEffect(() => {
+    if (!authState.currentUser) {
+      setPatientAppointments([]);
+      setDoctorAppointmentsQueue([]);
+      setPrescriptions([]);
+      setMedicalRecords([]);
+      setPatientDirectory([]);
+      return;
+    }
+
+    const currentUid = authState.currentUser.uid;
+    const isDoctor = authState.currentUser.role === 'Doctor';
+    const unsubscribers: (() => void)[] = [];
+
+    try {
+      // 1. Appointments Listener
+      const aptsQuery = isDoctor
+        ? collection(db, 'appointments')
+        : query(collection(db, 'appointments'), where('patientId', '==', currentUid));
+
+      const unsubApts = onSnapshot(aptsQuery, (snapshot) => {
+        const apts: Appointment[] = [];
+        snapshot.forEach((d) => apts.push({ ...d.data(), id: d.id } as Appointment));
+        if (isDoctor) {
+          setDoctorAppointmentsQueue(apts);
+        } else {
+          setPatientAppointments(apts);
+        }
+      }, (err) => console.warn('Appointments listener notice:', err.message));
+      unsubscribers.push(unsubApts);
+
+      // 2. Prescriptions Listener
+      const rxQuery = isDoctor
+        ? query(collection(db, 'prescriptions'), where('doctorId', '==', currentUid))
+        : query(collection(db, 'prescriptions'), where('patientId', '==', currentUid));
+
+      const unsubRx = onSnapshot(rxQuery, (snapshot) => {
+        const rxs: Prescription[] = [];
+        snapshot.forEach((d) => rxs.push({ ...d.data(), id: d.id } as Prescription));
+        setPrescriptions(rxs);
+      }, (err) => console.warn('Prescriptions listener notice:', err.message));
+      unsubscribers.push(unsubRx);
+
+      // 3. Medical Records Listener (Patients)
+      if (!isDoctor) {
+        const recQuery = query(collection(db, 'medicalRecords'), where('patientId', '==', currentUid));
+        const unsubRec = onSnapshot(recQuery, (snapshot) => {
+          const recs: MedicalRecord[] = [];
+          snapshot.forEach((d) => recs.push({ ...d.data(), id: d.id } as MedicalRecord));
+          setMedicalRecords(recs);
+        }, (err) => console.warn('Medical records listener notice:', err.message));
+        unsubscribers.push(unsubRec);
+      }
+
+      // 4. Patient Directory (Doctors)
+      if (isDoctor) {
+        const patientsQuery = query(collection(db, 'users'), where('role', '==', 'Patient'));
+        const unsubPatients = onSnapshot(patientsQuery, (snapshot) => {
+          const dir: PatientDirectoryItem[] = [];
+          snapshot.forEach((d) => {
+            const data = d.data();
+            dir.push({
+              id: d.id,
+              name: data.fullName || 'Patient',
+              age: data.age || 35,
+              gender: data.gender || 'Other',
+              condition: data.condition || 'General Observation',
+              status: 'Stable',
+              roomOrBed: data.roomOrBed || 'Remote Home-Care',
+              assignedDoctor: authState.currentUser?.fullName || 'Assigned Clinician',
+              lastVisit: data.lastVisit || 'Initial Intake',
+              nextAppointment: data.nextAppointment,
+              currentVitals: {
+                heartRate: 0,
+                spo2: 0,
+                temperature: 0,
+                bloodPressure: '--/--',
+              },
+            });
+          });
+          setPatientDirectory(dir);
+        }, (err) => console.warn('Patient directory listener notice:', err.message));
+        unsubscribers.push(unsubPatients);
+      }
+    } catch (err) {
+      console.warn('Firestore subscription setup error:', err);
+    }
+
+    return () => {
+      unsubscribers.forEach((fn) => {
+        try {
+          fn();
+        } catch {}
+      });
+    };
+  }, [authState.currentUser]);
+
+  const addAppointment = async (apt: Appointment) => {
     setPatientAppointments((prev) => [apt, ...prev]);
     setDoctorAppointmentsQueue((prev) => [apt, ...prev]);
+    try {
+      await setDoc(doc(db, 'appointments', apt.id), apt);
+    } catch (err) {
+      console.warn('Notice: Firestore save appointment offline fallback:', err);
+    }
   };
 
-  const addPrescription = (rx: Prescription) => {
+  const addPrescription = async (rx: Prescription) => {
     setPrescriptions((prev) => [rx, ...prev]);
+    try {
+      await setDoc(doc(db, 'prescriptions', rx.id), rx);
+    } catch (err) {
+      console.warn('Notice: Firestore save prescription offline fallback:', err);
+    }
   };
 
-  const addMedicalRecord = (rec: MedicalRecord) => {
+  const addMedicalRecord = async (rec: MedicalRecord) => {
     setMedicalRecords((prev) => [rec, ...prev]);
+    try {
+      await setDoc(doc(db, 'medicalRecords', rec.id), rec);
+    } catch (err) {
+      console.warn('Notice: Firestore save medical record offline fallback:', err);
+    }
   };
 
   const openVideoCall = (aptOrName: Appointment | string) => {
     if (typeof aptOrName === 'string') {
       const apt: Appointment = {
         id: `apt_quick_${Date.now()}`,
-        patientId: 'patient_sarah_jenkins_01',
-        patientName: aptOrName,
-        doctorId: MOCK_DOCTOR_USER.uid,
-        doctorName: authState.currentUser?.role === 'Doctor' ? authState.currentUser.fullName : MOCK_DOCTOR_USER.fullName,
-        doctorSpecialty: 'Cardiology & Intensive Care',
-        date: 'Today, Oct 4',
+        patientId: authState.currentUser?.uid || 'patient_direct',
+        patientName: aptOrName || authState.currentUser?.fullName || 'Patient',
+        doctorId: authState.currentUser?.role === 'Doctor' ? authState.currentUser.uid : 'doctor_on_call',
+        doctorName: authState.currentUser?.role === 'Doctor' ? authState.currentUser.fullName : 'Attending Clinician',
+        doctorSpecialty: 'Telehealth Care',
+        date: 'Today',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         type: 'Video Call',
         status: 'In Progress',
-        symptoms: 'Urgent telemetry triage review session.',
+        symptoms: 'Virtual clinical consultation.',
       };
       setActiveCallAppointment(apt);
     } else {
@@ -149,7 +256,7 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
     setActiveCallAppointment(null);
   };
 
-  const openEHR = (patientName: string = 'Sarah Jenkins') => {
+  const openEHR = (patientName: string = '') => {
     setTargetEhrPatientName(patientName);
     setIsEHRModalOpen(true);
   };

@@ -27,7 +27,7 @@ interface DoctorDashboardProps {
   doctor: UserProfile;
   appointmentsQueue: Appointment[];
   patients: PatientDirectoryItem[];
-  liveSarahTelemetry: LiveTelemetryPayload;
+  liveTelemetry?: LiveTelemetryPayload;
   onNavigateTab: (tab: DoctorTab) => void;
   onStartVideoCall: (appointment: Appointment) => void;
   onOpenEHR: (patientName: string) => void;
@@ -37,7 +37,7 @@ export function DoctorDashboard({
   doctor,
   appointmentsQueue,
   patients,
-  liveSarahTelemetry,
+  liveTelemetry,
   onNavigateTab,
   onStartVideoCall,
   onOpenEHR,
@@ -64,10 +64,10 @@ export function DoctorDashboard({
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-              {doctor.fullName}
+              {doctor?.fullName || 'Dr. Clinician'}
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl">
-              {doctor.specialty || 'Cardiology & Intensive Care'} • CuraLink Telehealth Network. 4 continuous remote patient streams currently reporting telemetry.
+              {doctor?.specialty || 'General Tele-Medicine'} • CuraLink Telehealth Network. {patients.length > 0 ? `${patients.length} remote patient stream${patients.length === 1 ? '' : 's'} reporting telemetry.` : 'No remote patient telemetry streams active.'}
             </p>
           </div>
 
@@ -81,7 +81,7 @@ export function DoctorDashboard({
             </button>
 
             <button
-              onClick={() => onOpenEHR(nextVisit?.patientName || 'Sarah Jenkins')}
+              onClick={() => onOpenEHR(nextVisit?.patientName || '')}
               className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
             >
               <FilePlus className="w-4 h-4 text-teal-300" />
@@ -110,7 +110,7 @@ export function DoctorDashboard({
             <span className="text-xs text-slate-500 font-medium">Scheduled</span>
           </div>
           <p className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-teal-700 font-semibold">
-            Next: {nextVisit ? `${nextVisit.patientName} (${nextVisit.time})` : 'All clear'}
+            Next: {nextVisit ? `${nextVisit.patientName} (${nextVisit.time})` : 'No upcoming appointments'}
           </p>
         </div>
 
@@ -158,11 +158,11 @@ export function DoctorDashboard({
             <span className="text-3xl font-black text-slate-900 font-mono">
               {patients.length}
             </span>
-            <span className="text-xs text-slate-500 font-medium">ESP32 Nodes</span>
+            <span className="text-xs text-slate-500 font-medium">Wearable Nodes</span>
           </div>
           <p className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>100% Signal Integrity</span>
+            <span>{patients.length > 0 ? 'Real-Time Telemetry Live' : 'Awaiting sensor connect'}</span>
           </p>
         </div>
 
@@ -177,7 +177,7 @@ export function DoctorDashboard({
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 font-mono">3</span>
+            <span className="text-3xl font-black text-slate-900 font-mono">{appointmentsQueue.length}</span>
             <span className="text-xs text-slate-500 font-medium">Pending EHR Notes</span>
           </div>
           <p className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500 font-mono">
@@ -198,72 +198,80 @@ export function DoctorDashboard({
           </span>
         </div>
 
-        <div className="space-y-3">
-          {appointmentsQueue.map((apt, index) => (
-            <div
-              key={apt.id}
-              className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                index === 0
-                  ? 'bg-teal-50/40 border-teal-300 shadow-xs'
-                  : 'bg-white border-slate-200/80 hover:border-slate-300'
-              }`}
-            >
-              <div className="flex items-start gap-3.5">
-                <div className="w-11 h-11 rounded-2xl bg-teal-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
-                  {apt.patientName
-                    .split(' ')
-                    .map((n) => n[0])
-                    .join('')}
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-bold text-slate-900">{apt.patientName}</h4>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                      {apt.type}
-                    </span>
-                    {index === 0 && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse">
-                        Ready to Start
-                      </span>
-                    )}
+        {appointmentsQueue.length === 0 ? (
+          <div className="py-12 text-center text-xs text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center">
+            <Calendar className="w-10 h-10 text-slate-300 mb-2 stroke-1" />
+            <p className="font-bold text-slate-700 text-sm">No upcoming appointments</p>
+            <p className="text-slate-400 mt-1 max-w-sm">There are no patient consultations currently in your queue.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {appointmentsQueue.map((apt, index) => (
+              <div
+                key={apt.id}
+                className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                  index === 0
+                    ? 'bg-teal-50/40 border-teal-300 shadow-xs'
+                    : 'bg-white border-slate-200/80 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-start gap-3.5">
+                  <div className="w-11 h-11 rounded-2xl bg-teal-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
+                    {apt.patientName
+                      .split(' ')
+                      .map((n) => n[0])
+                      .join('')}
                   </div>
-                  <p className="text-xs text-slate-600 mt-1 max-w-xl">
-                    <strong className="text-slate-800">Chief Symptoms:</strong> {apt.symptoms}
-                  </p>
+
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-slate-900">{apt.patientName}</h4>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        {apt.type}
+                      </span>
+                      {index === 0 && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse">
+                          Ready to Start
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-600 mt-1 max-w-xl">
+                      <strong className="text-slate-800">Chief Symptoms:</strong> {apt.symptoms}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+                  <div className="text-left sm:text-right">
+                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-teal-600" />
+                      <span>{apt.time}</span>
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-mono">{apt.date}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onOpenEHR(apt.patientName)}
+                      className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-all cursor-pointer"
+                      title="Open EHR"
+                    >
+                      <Stethoscope className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => onStartVideoCall(apt)}
+                      className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <Video className="w-4 h-4" />
+                      <span>Start Video Call</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-
-              <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
-                <div className="text-left sm:text-right">
-                  <p className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-teal-600" />
-                    <span>{apt.time}</span>
-                  </p>
-                  <p className="text-[10px] text-slate-400 font-mono">{apt.date}</p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => onOpenEHR(apt.patientName)}
-                    className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-all cursor-pointer"
-                    title="Open EHR"
-                  >
-                    <Stethoscope className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    onClick={() => onStartVideoCall(apt)}
-                    className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-2"
-                  >
-                    <Video className="w-4 h-4" />
-                    <span>Start Video Call</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

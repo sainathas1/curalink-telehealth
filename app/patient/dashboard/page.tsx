@@ -4,7 +4,14 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTelehealth } from '../../../context/TelehealthContext';
 import { PatientDashboard } from '../../../components/patient/PatientDashboard';
-import { MOCK_PATIENT_USER } from '../../../lib/mock-data';
+import { UserProfile } from '../../../lib/types';
+
+const DEFAULT_PATIENT: UserProfile = {
+  uid: '',
+  fullName: 'Patient',
+  email: '',
+  role: 'Patient',
+};
 
 export default function PatientDashboardRoute() {
   const router = useRouter();
@@ -39,7 +46,7 @@ export default function PatientDashboardRoute() {
 
   return (
     <PatientDashboard
-      user={currentUser || MOCK_PATIENT_USER}
+      user={currentUser || DEFAULT_PATIENT}
       telemetry={telemetry}
       appointments={patientAppointments}
       prescriptions={prescriptions}

@@ -149,8 +149,23 @@ export function AppointmentsList({
 
         <div className="space-y-3">
           {filteredAppointments.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-xs">
-              No appointments found for the selected filter.
+            <div className="py-12 px-6 rounded-2xl bg-slate-50/50 border border-dashed border-slate-200 flex flex-col items-center justify-center text-center">
+              <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
+                <Calendar className="w-6 h-6" />
+              </div>
+              <h4 className="text-sm font-semibold text-slate-800 mb-1">
+                No upcoming appointments scheduled
+              </h4>
+              <p className="text-xs text-slate-500 max-w-sm mb-4">
+                You don't have any appointments currently. Schedule a virtual or in-clinic visit with a verified clinician.
+              </p>
+              <button
+                onClick={() => setIsBookModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Book First Consultation</span>
+              </button>
             </div>
           ) : (
             filteredAppointments.map((apt) => (

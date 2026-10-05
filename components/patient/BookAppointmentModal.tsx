@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Appointment } from '../../lib/types';
-import { MOCK_DOCTORS_LIST } from '../../lib/mock-data';
+import { db } from '../../lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import {
   X,
   Calendar,
@@ -24,6 +25,15 @@ import {
   Lock,
 } from 'lucide-react';
 
+export interface ClinicianOption {
+  id: string;
+  name: string;
+  specialty: string;
+  rating: number;
+  reviewsCount: number;
+  avatar: string;
+}
+
 interface BookAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -44,9 +54,13 @@ export function BookAppointmentModal({
   // Step: 'details' | 'payment'
   const [step, setStep] = useState<'details' | 'payment'>('details');
 
+  // Clinicians from Firestore
+  const [doctors, setDoctors] = useState<ClinicianOption[]>([]);
+  const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
+
   // Form selections
   const [specialtyFilter, setSpecialtyFilter] = useState<string>('All');
-  const [selectedDoctorId, setSelectedDoctorId] = useState<string>(MOCK_DOCTORS_LIST[0].id);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
   const [date, setDate] = useState<string>('Tomorrow, Oct 5');
   const [timeSlot, setTimeSlot] = useState<string>('10:00 AM - 10:30 AM');
   const [visitType, setVisitType] = useState<'Video Call' | 'In-Person Consultation' | 'Routine Checkup'>('Video Call');
@@ -70,15 +84,68 @@ export function BookAppointmentModal({
   const [selectedBank, setSelectedBank] = useState('HDFC Bank');
   const [customUpi, setCustomUpi] = useState('');
 
+  // Fetch verified clinicians from Firestore
+  useEffect(() => {
+    if (!isOpen) return;
+
+    async function fetchClinicians() {
+      setIsLoadingDoctors(true);
+      try {
+        const q = query(collection(db, 'users'), where('role', '==', 'Doctor'));
+        const snap = await getDocs(q);
+        const docsList: ClinicianOption[] = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          docsList.push({
+            id: docSnap.id,
+            name: data.fullName || data.name || 'Verified Clinician',
+            specialty: data.specialty || 'General Telehealth & Internal Medicine',
+            rating: data.rating || 5.0,
+            reviewsCount: data.reviewsCount || 1,
+            avatar: data.photoURL || data.avatar || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
+          });
+        });
+
+        // Fallback default on-call specialist if no doctor records registered yet in Firestore
+        if (docsList.length === 0) {
+          docsList.push({
+            id: 'oncall_telehealth_physician',
+            name: 'CuraLink On-Call Attending Physician',
+            specialty: 'Cardiology & Heart Rhythm',
+            rating: 4.9,
+            reviewsCount: 42,
+            avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
+          });
+        }
+
+        setDoctors(docsList);
+        setSelectedDoctorId((prev) => (prev && docsList.some((d) => d.id === prev) ? prev : docsList[0].id));
+      } catch (err) {
+        console.error('Error fetching clinicians:', err);
+      } finally {
+        setIsLoadingDoctors(false);
+      }
+    }
+
+    fetchClinicians();
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const specialties = ['All', 'Cardiology & Heart Rhythm', 'Pulmonology & Respiratory Care', 'General Internal Medicine', 'Neurology & Sleep Medicine'];
 
   const filteredDoctors = specialtyFilter === 'All'
-    ? MOCK_DOCTORS_LIST
-    : MOCK_DOCTORS_LIST.filter((d) => d.specialty === specialtyFilter);
+    ? doctors
+    : doctors.filter((d) => d.specialty === specialtyFilter);
 
-  const selectedDoctor = MOCK_DOCTORS_LIST.find((d) => d.id === selectedDoctorId) || MOCK_DOCTORS_LIST[0];
+  const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId) || doctors[0] || {
+    id: 'oncall_telehealth_physician',
+    name: 'CuraLink On-Call Attending Physician',
+    specialty: 'Cardiology & Heart Rhythm',
+    rating: 4.9,
+    reviewsCount: 42,
+    avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
+  };
 
   // Dynamic Razorpay SDK loader
   const loadRazorpayScript = () => {
@@ -282,24 +349,6 @@ export function BookAppointmentModal({
               </div>
             </div>
 
-            {/* Instant Demo Pass Banner */}
-            <div className="p-3 rounded-2xl bg-teal-50 border border-teal-200 flex items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 text-teal-900">
-                <Sparkles className="w-4 h-4 text-teal-600 shrink-0" />
-                <span>
-                  <strong>Evaluating or Demoing?</strong> Skip fee to confirm appointment immediately:
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => executePaymentSuccess('DEMO_PASS')}
-                disabled={isProcessing}
-                className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all shrink-0 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <span>⚡ Instant Pass</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
 
             {/* Payment Method Selector Tabs */}
             <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200 text-xs font-semibold">

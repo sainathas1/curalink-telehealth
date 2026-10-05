@@ -4,7 +4,16 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTelehealth } from '../../../context/TelehealthContext';
 import { DoctorDashboard } from '../../../components/doctor/DoctorDashboard';
-import { MOCK_DOCTOR_USER } from '../../../lib/mock-data';
+import { UserProfile } from '../../../lib/types';
+
+const DEFAULT_DOCTOR: UserProfile = {
+  uid: '',
+  fullName: 'Dr. Clinician',
+  email: '',
+  role: 'Doctor',
+  specialty: 'Clinical Telehealth Care',
+  licenseNumber: 'MD-VERIFIED',
+};
 
 export default function DoctorDashboardRoute() {
   const router = useRouter();
@@ -38,10 +47,10 @@ export default function DoctorDashboardRoute() {
 
   return (
     <DoctorDashboard
-      doctor={currentUser || MOCK_DOCTOR_USER}
+      doctor={currentUser || DEFAULT_DOCTOR}
       appointmentsQueue={doctorAppointmentsQueue}
       patients={patientDirectory}
-      liveSarahTelemetry={telemetry}
+      liveTelemetry={telemetry}
       onNavigateTab={handleNavigateTab}
       onStartVideoCall={openVideoCall}
       onOpenEHR={openEHR}

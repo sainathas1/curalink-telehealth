@@ -1,8 +1,23 @@
 import { LiveTelemetryPayload, VitalStatus } from './types';
-import { db } from './firebase';
+import { db, rtdb } from './firebase';
 import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, onValue } from 'firebase/database';
 
 export type SimulationMode = 'normal' | 'tachycardia' | 'hypoxia' | 'fever';
+
+export const INITIAL_EMPTY_TELEMETRY: LiveTelemetryPayload = {
+  deviceId: 'STANDBY-WAITING-FOR-STREAM',
+  patientId: '',
+  timestamp: 0,
+  heartRate: 0,
+  spo2: 0,
+  temperature: 0,
+  systolic: 0,
+  diastolic: 0,
+  batteryLevel: 0,
+  sensorConnected: false,
+  status: 'normal',
+};
 
 /**
  * Calculates physiological status based on clinical threshold guidelines:
@@ -14,6 +29,11 @@ export function evaluateVitalStatus(hr: number, spo2: number, temp: number): {
   status: VitalStatus;
   alertMessage?: string;
 } {
+  // If sensor is disconnected or zeroed, return normal standby
+  if (hr === 0 && spo2 === 0) {
+    return { status: 'normal' };
+  }
+
   const alerts: string[] = [];
 
   if (hr >= 120) alerts.push(`Severe Tachycardia detected: ${hr} BPM`);
@@ -26,10 +46,10 @@ export function evaluateVitalStatus(hr: number, spo2: number, temp: number): {
   if (temp >= 38.3) alerts.push(`High Fever / Pyrexia: ${temp.toFixed(1)}°C`);
   else if (temp >= 37.5) alerts.push(`Mild Fever: ${temp.toFixed(1)}°C`);
 
-  if (hr >= 120 || hr < 50 || spo2 < 92 || temp >= 38.3) {
+  if (hr >= 120 || (hr > 0 && hr < 50) || (spo2 > 0 && spo2 < 92) || temp >= 38.3) {
     return { status: 'critical', alertMessage: alerts.join(' | ') };
   }
-  if (hr > 100 || hr < 60 || spo2 < 95 || temp >= 37.5) {
+  if (hr > 100 || (hr > 0 && hr < 60) || (spo2 > 0 && spo2 < 95) || temp >= 37.5) {
     return { status: 'elevated', alertMessage: alerts.join(' | ') };
   }
   return { status: 'normal' };
@@ -69,23 +89,26 @@ export function playAlertChime(critical: boolean = false) {
 
 /**
  * Hardware Payload Listener:
- * Subscribes to Firestore `/telemetry/{patientId}`
- * Supports physical ESP32/ESP8266 devices writing directly to Firestore
+ * Subscribes to Firestore `/telemetry/{patientId}` and Firebase Realtime Database
+ * Supports physical ESP32/ESP8266 devices writing directly to either service.
  */
 export function subscribeToFirebaseTelemetry(
   patientId: string,
   onData: (payload: LiveTelemetryPayload) => void
 ): () => void {
+  const unsubscribers: (() => void)[] = [];
+
+  // 1. Subscribe to Firestore
   try {
     const docRef = doc(db, 'telemetry', patientId);
-    const unsubscribe = onSnapshot(
+    const unsubFirestore = onSnapshot(
       docRef,
       (snapshot) => {
         if (snapshot.exists()) {
           const raw = snapshot.data();
-          const hr = Number(raw.heartRate || 75);
-          const spo2 = Number(raw.spo2 || 98);
-          const temp = Number(raw.temperature || 36.7);
+          const hr = Number(raw.heartRate || 0);
+          const spo2 = Number(raw.spo2 || 0);
+          const temp = Number(raw.temperature || 0);
           const evalResult = evaluateVitalStatus(hr, spo2, temp);
 
           onData({
@@ -95,9 +118,9 @@ export function subscribeToFirebaseTelemetry(
             heartRate: hr,
             spo2,
             temperature: temp,
-            systolic: Number(raw.systolic || 120),
-            diastolic: Number(raw.diastolic || 80),
-            batteryLevel: Number(raw.batteryLevel || 95),
+            systolic: Number(raw.systolic || 0),
+            diastolic: Number(raw.diastolic || 0),
+            batteryLevel: Number(raw.batteryLevel || 100),
             sensorConnected: true,
             status: evalResult.status,
             alertMessage: evalResult.alertMessage,
@@ -105,14 +128,56 @@ export function subscribeToFirebaseTelemetry(
         }
       },
       (error) => {
-        console.warn('Live Firebase telemetry listener fallback to local stream:', error.message);
+        console.warn('Firestore telemetry listener notice:', error.message);
       }
     );
-    return unsubscribe;
+    unsubscribers.push(unsubFirestore);
   } catch (err) {
-    console.warn('Firebase telemetry subscription error:', err);
-    return () => {};
+    console.warn('Firestore telemetry subscription error:', err);
   }
+
+  // 2. Subscribe to Firebase Realtime Database (rtdb)
+  try {
+    const rtdbRef = ref(rtdb, `telemetry/${patientId}`);
+    const unsubRtdb = onValue(rtdbRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const raw = snapshot.val();
+        const hr = Number(raw.heartRate || 0);
+        const spo2 = Number(raw.spo2 || 0);
+        const temp = Number(raw.temperature || 0);
+        const evalResult = evaluateVitalStatus(hr, spo2, temp);
+
+        onData({
+          deviceId: String(raw.deviceId || 'ESP32-RTDB-FEED'),
+          patientId,
+          timestamp: typeof raw.timestamp === 'number' ? raw.timestamp : Date.now(),
+          heartRate: hr,
+          spo2,
+          temperature: temp,
+          systolic: Number(raw.systolic || 0),
+          diastolic: Number(raw.diastolic || 0),
+          batteryLevel: Number(raw.batteryLevel || 100),
+          sensorConnected: true,
+          status: evalResult.status,
+          alertMessage: evalResult.alertMessage,
+        });
+      }
+    }, (error) => {
+      console.warn('Realtime Database telemetry listener notice:', error.message);
+    });
+
+    unsubscribers.push(() => unsubRtdb());
+  } catch (err) {
+    console.warn('Realtime Database subscription error:', err);
+  }
+
+  return () => {
+    unsubscribers.forEach((fn) => {
+      try {
+        fn();
+      } catch {}
+    });
+  };
 }
 
 /**

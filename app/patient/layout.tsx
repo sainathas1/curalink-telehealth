@@ -46,8 +46,6 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
     openAuthModal,
     closeAuthModal,
     setAuthenticatedProfile,
-    switchToPatientDemo,
-    switchToDoctorDemo,
   } = useTelehealth();
 
   // Determine active tab from pathname
@@ -83,7 +81,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
     router.push('/doctor/dashboard');
   };
 
-  const patientName = currentUser?.fullName || 'Sarah Jenkins';
+  const patientName = currentUser?.fullName || 'Patient';
   const criticalCount = patientDirectory.filter((p) => p.status === 'Critical').length + (telemetry.status === 'critical' ? 1 : 0);
 
   return (
@@ -130,7 +128,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
         onClose={closeVideoCall}
         appointment={activeCallAppointment}
         telemetry={telemetry}
-        doctorName="Dr. Marcus Vance, MD"
+        doctorName={activeCallAppointment?.doctorName || 'Attending Physician'}
         role="Patient"
         currentUser={currentUser}
       />
@@ -168,14 +166,6 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
           else router.push('/patient/dashboard');
         }}
         initialRole="Patient"
-        onSelectDemoPatient={() => {
-          switchToPatientDemo();
-          router.push('/patient/dashboard');
-        }}
-        onSelectDemoDoctor={() => {
-          switchToDoctorDemo();
-          router.push('/doctor/dashboard');
-        }}
       />
     </div>
   );

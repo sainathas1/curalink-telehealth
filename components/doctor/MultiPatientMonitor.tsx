@@ -20,7 +20,7 @@ import {
 
 interface MultiPatientMonitorProps {
   patients: PatientDirectoryItem[];
-  liveSarahTelemetry: LiveTelemetryPayload;
+  liveTelemetry?: LiveTelemetryPayload;
   onStartVideoCall: (patientName: string) => void;
   onOpenEHR: (patientName: string) => void;
   onOpenSimulator: () => void;
@@ -28,7 +28,7 @@ interface MultiPatientMonitorProps {
 
 export function MultiPatientMonitor({
   patients,
-  liveSarahTelemetry,
+  liveTelemetry,
   onStartVideoCall,
   onOpenEHR,
   onOpenSimulator,
@@ -36,24 +36,28 @@ export function MultiPatientMonitor({
   const [filter, setFilter] = useState<'All' | 'Critical' | 'Monitored' | 'Stable'>('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Update Sarah's card with live telemetry hook values
+  const activeTelemetry = liveTelemetry;
+
+  // Update patient card with live telemetry stream if patient matches
   const updatedPatients = patients.map((pt) => {
-    if (pt.id === 'patient_sarah_jenkins_01') {
-      const status =
-        liveSarahTelemetry.status === 'critical'
-          ? ('Critical' as const)
-          : liveSarahTelemetry.status === 'elevated'
-          ? ('Monitored' as const)
-          : ('Stable' as const);
+    if (activeTelemetry && pt.id === activeTelemetry.patientId) {
+      const isStandby = !activeTelemetry.sensorConnected || activeTelemetry.heartRate === 0;
+      const status = isStandby
+        ? pt.status
+        : activeTelemetry.status === 'critical'
+        ? ('Critical' as const)
+        : activeTelemetry.status === 'elevated'
+        ? ('Monitored' as const)
+        : ('Stable' as const);
 
       return {
         ...pt,
         status,
         currentVitals: {
-          heartRate: liveSarahTelemetry.heartRate,
-          spo2: liveSarahTelemetry.spo2,
-          temperature: liveSarahTelemetry.temperature,
-          bloodPressure: `${liveSarahTelemetry.systolic}/${liveSarahTelemetry.diastolic}`,
+          heartRate: activeTelemetry.heartRate,
+          spo2: activeTelemetry.spo2,
+          temperature: activeTelemetry.temperature,
+          bloodPressure: `${activeTelemetry.systolic}/${activeTelemetry.diastolic}`,
         },
       };
     }
@@ -145,9 +149,22 @@ export function MultiPatientMonitor({
         </div>
       </div>
 
-      {/* Grid of Patient Telemetry Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filtered.map((pt) => {
+      {/* Grid of Patient Telemetry Cards or Empty State */}
+      {filtered.length === 0 ? (
+        <div className="py-12 px-6 rounded-2xl bg-white border border-slate-200/80 flex flex-col items-center justify-center text-center shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
+            <Radio className="w-6 h-6" />
+          </div>
+          <h4 className="text-sm font-semibold text-slate-800 mb-1">
+            No active patient telemetry streams
+          </h4>
+          <p className="text-xs text-slate-500 max-w-sm">
+            There are currently no patients streaming IoT vitals under the selected filter. When patient IoT nodes connect or register in the ward, their live vitals will appear here in real time.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filtered.map((pt) => {
           const isCritical = pt.status === 'Critical';
           const isMonitored = pt.status === 'Monitored';
 
@@ -301,7 +318,8 @@ export function MultiPatientMonitor({
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

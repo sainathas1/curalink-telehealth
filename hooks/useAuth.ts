@@ -2,16 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { UserProfile, UserRole } from '../lib/types';
-import { MOCK_PATIENT_USER, MOCK_DOCTOR_USER } from '../lib/mock-data';
 import { auth, db } from '../lib/firebase';
 import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
 export function useAuth() {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(MOCK_PATIENT_USER);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [role, setRole] = useState<UserRole>('Patient');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Sync with Firebase Auth state
   useEffect(() => {
@@ -48,29 +47,17 @@ export function useAuth() {
         } finally {
           setIsLoading(false);
         }
+      } else {
+        setCurrentUser(null);
+        setIsLoading(false);
       }
     });
 
     return () => unsub();
   }, []);
 
-  // Quick Role / Persona Switcher for demonstration
-  const switchToPatientDemo = () => {
-    setCurrentUser(MOCK_PATIENT_USER);
-    setRole('Patient');
-  };
-
-  const switchToDoctorDemo = () => {
-    setCurrentUser(MOCK_DOCTOR_USER);
-    setRole('Doctor');
-  };
-
   const toggleRole = () => {
-    if (role === 'Patient') {
-      switchToDoctorDemo();
-    } else {
-      switchToPatientDemo();
-    }
+    setRole((prev) => (prev === 'Patient' ? 'Doctor' : 'Patient'));
   };
 
   const handleLogout = async () => {
@@ -93,8 +80,6 @@ export function useAuth() {
     role,
     setRole,
     isLoading,
-    switchToPatientDemo,
-    switchToDoctorDemo,
     toggleRole,
     handleLogout,
     setAuthenticatedProfile,

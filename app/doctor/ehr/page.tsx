@@ -19,7 +19,7 @@ export default function DoctorEHRRoute() {
           </p>
         </div>
         <button
-          onClick={() => openEHR('Sarah Jenkins')}
+          onClick={() => openEHR('')}
           className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer"
         >
           + Write New Prescription
@@ -28,7 +28,7 @@ export default function DoctorEHRRoute() {
 
       <PrescriptionsList
         prescriptions={prescriptions}
-        patientName="Sarah Jenkins"
+        patientName="Patient"
       />
     </div>
   );

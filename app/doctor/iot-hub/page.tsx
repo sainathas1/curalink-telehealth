@@ -43,7 +43,7 @@ export default function DoctorIoTHubRoute() {
 
       <MultiPatientMonitor
         patients={patientDirectory}
-        liveSarahTelemetry={telemetry}
+        liveTelemetry={telemetry}
         onStartVideoCall={openVideoCall}
         onOpenEHR={openEHR}
         onOpenSimulator={openSimulator}

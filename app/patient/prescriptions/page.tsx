@@ -6,7 +6,7 @@ import { PrescriptionsList } from '../../../components/patient/PrescriptionsList
 
 export default function PatientPrescriptionsRoute() {
   const { currentUser, prescriptions } = useTelehealth();
-  const patientName = currentUser?.fullName || 'Sarah Jenkins';
+  const patientName = currentUser?.fullName || 'Patient';
 
   return (
     <PrescriptionsList

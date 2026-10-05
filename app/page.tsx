@@ -4,23 +4,16 @@ import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useTelemetry } from '../hooks/useTelemetry';
 import {
-  MOCK_APPOINTMENTS,
-  MOCK_DOCTOR_APPOINTMENTS_QUEUE,
-  MOCK_PRESCRIPTIONS,
-  MOCK_MEDICAL_RECORDS,
-  MOCK_PATIENT_DIRECTORY,
-  MOCK_DOCTOR_USER,
-} from '../lib/mock-data';
-import {
   Appointment,
   Prescription,
   MedicalRecord,
   PatientDirectoryItem,
+  UserProfile,
 } from '../lib/types';
 
 // Navigation Components
 import { TopHeader } from '../components/navbar/TopHeader';
-import { Sidebar, ActiveTab, PatientTab, DoctorTab } from '../components/navbar/Sidebar';
+import { Sidebar, ActiveTab } from '../components/navbar/Sidebar';
 import { MobileNav } from '../components/navbar/MobileNav';
 
 // Patient Portal Components
@@ -45,17 +38,23 @@ import { ESP32GuideModal } from '../components/iot/ESP32GuideModal';
 // Auth Modal
 import { AuthModal } from '../components/auth/AuthModal';
 
+const DEFAULT_FALLBACK_USER: UserProfile = {
+  uid: 'guest_user',
+  email: 'guest@curalink.health',
+  fullName: 'Guest User',
+  role: 'Patient',
+};
+
 export default function CuraLinkApp() {
   const {
     currentUser,
     role,
-    setRole,
     toggleRole,
     handleLogout,
-    switchToPatientDemo,
-    switchToDoctorDemo,
     setAuthenticatedProfile,
   } = useAuth();
+
+  const activePatientId = currentUser?.uid || 'patient_live';
 
   const {
     telemetry,
@@ -68,35 +67,31 @@ export default function CuraLinkApp() {
     setAudioAlertsEnabled,
     temperatureUnit,
     toggleTemperatureUnit,
-  } = useTelemetry('patient_sarah_jenkins_01');
+  } = useTelemetry(activePatientId);
 
   // Active Tab State (synced with current role)
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Core Data Lists
-  const [patientAppointments, setPatientAppointments] = useState<Appointment[]>(MOCK_APPOINTMENTS);
-  const [doctorAppointmentsQueue, setDoctorAppointmentsQueue] = useState<Appointment[]>(MOCK_DOCTOR_APPOINTMENTS_QUEUE);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>(MOCK_PRESCRIPTIONS);
-  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>(MOCK_MEDICAL_RECORDS);
-  const [patientDirectory, setPatientDirectory] = useState<PatientDirectoryItem[]>(MOCK_PATIENT_DIRECTORY);
+  // Core Data Lists - Empty by default, populated by real Firestore / user actions
+  const [patientAppointments, setPatientAppointments] = useState<Appointment[]>([]);
+  const [doctorAppointmentsQueue, setDoctorAppointmentsQueue] = useState<Appointment[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [patientDirectory, setPatientDirectory] = useState<PatientDirectoryItem[]>([]);
 
   // Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
   const [activeCallAppointment, setActiveCallAppointment] = useState<Appointment | null>(null);
   const [isEHRModalOpen, setIsEHRModalOpen] = useState(false);
-  const [targetEhrPatientName, setTargetEhrPatientName] = useState('Sarah Jenkins');
+  const [targetEhrPatientName, setTargetEhrPatientName] = useState('');
   const [isSimulatorDrawerOpen, setIsSimulatorDrawerOpen] = useState(false);
   const [isESP32GuideOpen, setIsESP32GuideOpen] = useState(false);
   const [isEmergencySOSOpen, setIsEmergencySOSOpen] = useState(false);
 
-  // Handle Role Switch (Locked when authenticated to an actual account)
+  // Handle Role Switch
   const handleToggleRole = () => {
-    if (currentUser?.uid && !currentUser.uid.startsWith('demo_')) {
-      // Locked session: role is permanently tied to verified account
-      return;
-    }
     toggleRole();
     if (role === 'Patient') {
       setActiveTab('clinical-queue');
@@ -110,12 +105,12 @@ export default function CuraLinkApp() {
     if (typeof appointmentOrName === 'string') {
       const apt: Appointment = {
         id: `apt_quick_${Date.now()}`,
-        patientId: 'patient_sarah_jenkins_01',
+        patientId: activePatientId,
         patientName: appointmentOrName,
-        doctorId: MOCK_DOCTOR_USER.uid,
-        doctorName: currentUser?.role === 'Doctor' ? currentUser.fullName : MOCK_DOCTOR_USER.fullName,
-        doctorSpecialty: 'Cardiology & Intensive Care',
-        date: 'Today, Oct 4',
+        doctorId: currentUser?.role === 'Doctor' ? currentUser.uid : 'attending_physician',
+        doctorName: currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician',
+        doctorSpecialty: 'Telehealth Consultation',
+        date: 'Today',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         type: 'Video Call',
         status: 'In Progress',
@@ -150,7 +145,7 @@ export default function CuraLinkApp() {
     setMedicalRecords((prev) => [newRec, ...prev]);
   };
 
-  const patientName = currentUser?.role === 'Patient' ? currentUser.fullName : 'Sarah Jenkins';
+  const patientName = currentUser?.fullName || 'Patient';
   const criticalCount = patientDirectory.filter((p) => p.status === 'Critical').length + (telemetry.status === 'critical' ? 1 : 0);
 
   return (
@@ -189,7 +184,7 @@ export default function CuraLinkApp() {
             <>
               {activeTab === 'overview' && (
                 <PatientDashboard
-                  user={currentUser || MOCK_DOCTOR_USER}
+                  user={currentUser || DEFAULT_FALLBACK_USER}
                   telemetry={telemetry}
                   appointments={patientAppointments}
                   prescriptions={prescriptions}
@@ -219,7 +214,7 @@ export default function CuraLinkApp() {
                   onBookAppointment={handleBookAppointment}
                   onJoinVideoCall={handleStartVideoCall}
                   patientName={patientName}
-                  patientId="patient_sarah_jenkins_01"
+                  patientId={activePatientId}
                 />
               )}
 
@@ -235,6 +230,7 @@ export default function CuraLinkApp() {
                   records={medicalRecords}
                   onUploadRecord={handleUploadRecord}
                   patientName={patientName}
+                  patientId={activePatientId}
                 />
               )}
             </>
@@ -245,10 +241,10 @@ export default function CuraLinkApp() {
             <>
               {(activeTab === 'clinical-queue' || activeTab === ('overview' as any)) && (
                 <DoctorDashboard
-                  doctor={currentUser || MOCK_DOCTOR_USER}
+                  doctor={currentUser || { ...DEFAULT_FALLBACK_USER, role: 'Doctor', fullName: 'Attending Physician' }}
                   appointmentsQueue={doctorAppointmentsQueue}
                   patients={patientDirectory}
-                  liveSarahTelemetry={telemetry}
+                  liveTelemetry={telemetry}
                   onNavigateTab={(tab) => setActiveTab(tab)}
                   onStartVideoCall={handleStartVideoCall}
                   onOpenEHR={handleOpenEHR}
@@ -258,7 +254,7 @@ export default function CuraLinkApp() {
               {activeTab === 'ward-telemetry' && (
                 <MultiPatientMonitor
                   patients={patientDirectory}
-                  liveSarahTelemetry={telemetry}
+                  liveTelemetry={telemetry}
                   onStartVideoCall={handleStartVideoCall}
                   onOpenEHR={handleOpenEHR}
                   onOpenSimulator={() => setIsSimulatorDrawerOpen(true)}
@@ -285,7 +281,7 @@ export default function CuraLinkApp() {
                       </p>
                     </div>
                     <button
-                      onClick={() => handleOpenEHR('Sarah Jenkins')}
+                      onClick={() => handleOpenEHR('')}
                       className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 cursor-pointer"
                     >
                       + Write New Prescription
@@ -293,7 +289,7 @@ export default function CuraLinkApp() {
                   </div>
                   <PrescriptionsList
                     prescriptions={prescriptions}
-                    patientName="Sarah Jenkins"
+                    patientName="Patient"
                   />
                 </div>
               )}
@@ -325,10 +321,10 @@ export default function CuraLinkApp() {
                     </div>
                   </div>
 
-                  {/* Multi-patient ward monitor preview */}
+                  {/* Multi-patient ward monitor */}
                   <MultiPatientMonitor
                     patients={patientDirectory}
-                    liveSarahTelemetry={telemetry}
+                    liveTelemetry={telemetry}
                     onStartVideoCall={handleStartVideoCall}
                     onOpenEHR={handleOpenEHR}
                     onOpenSimulator={() => setIsSimulatorDrawerOpen(true)}
@@ -360,14 +356,6 @@ export default function CuraLinkApp() {
           else setActiveTab('overview');
         }}
         initialRole={role}
-        onSelectDemoPatient={() => {
-          switchToPatientDemo();
-          setActiveTab('overview');
-        }}
-        onSelectDemoDoctor={() => {
-          switchToDoctorDemo();
-          setActiveTab('clinical-queue');
-        }}
       />
 
       {/* Interactive Telehealth Video Consultation Room */}
@@ -384,7 +372,7 @@ export default function CuraLinkApp() {
             handleOpenEHR(activeCallAppointment.patientName);
           }
         }}
-        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Dr. Marcus Vance, MD'}
+        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician'}
         role={role}
         currentUser={currentUser}
       />
@@ -395,7 +383,7 @@ export default function CuraLinkApp() {
         onClose={() => setIsEHRModalOpen(false)}
         onIssuePrescription={handleIssuePrescription}
         defaultPatientName={targetEhrPatientName}
-        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Dr. Marcus Vance, MD'}
+        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician'}
       />
 
       {/* IoT Hardware Simulator Drawer */}
@@ -414,7 +402,7 @@ export default function CuraLinkApp() {
       <ESP32GuideModal
         isOpen={isESP32GuideOpen}
         onClose={() => setIsESP32GuideOpen(false)}
-        patientId="patient_sarah_jenkins_01"
+        patientId={activePatientId}
       />
 
       {/* Emergency Medical SOS Modal */}

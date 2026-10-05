@@ -12,7 +12,7 @@ export default function PatientAppointmentsRoute() {
     openVideoCall,
   } = useTelehealth();
 
-  const patientName = currentUser?.fullName || 'Sarah Jenkins';
+  const patientName = currentUser?.fullName || 'Patient';
 
   return (
     <AppointmentsList
@@ -20,7 +20,7 @@ export default function PatientAppointmentsRoute() {
       onBookAppointment={addAppointment}
       onJoinVideoCall={openVideoCall}
       patientName={patientName}
-      patientId="patient_sarah_jenkins_01"
+      patientId={currentUser?.uid || 'patient_user'}
     />
   );
 }

@@ -49,8 +49,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     openAuthModal,
     closeAuthModal,
     setAuthenticatedProfile,
-    switchToPatientDemo,
-    switchToDoctorDemo,
   } = useTelehealth();
 
   // RBAC Access Control Guard: block patients from accessing doctor routes
@@ -161,7 +159,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             openEHR(activeCallAppointment.patientName);
           }
         }}
-        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Dr. Marcus Vance, MD'}
+        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician'}
         role="Doctor"
         currentUser={currentUser}
       />
@@ -171,7 +169,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         onClose={closeEHR}
         onIssuePrescription={addPrescription}
         defaultPatientName={targetEhrPatientName}
-        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Dr. Marcus Vance, MD'}
+        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician'}
       />
 
       <HardwareSimulatorDrawer
@@ -188,7 +186,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       <ESP32GuideModal
         isOpen={isESP32GuideOpen}
         onClose={closeESP32Guide}
-        patientId="patient_sarah_jenkins_01"
+        patientId={telemetry.patientId || 'patient_live'}
       />
 
       <AuthModal
@@ -200,14 +198,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           else router.push('/patient/dashboard');
         }}
         initialRole="Doctor"
-        onSelectDemoPatient={() => {
-          switchToPatientDemo();
-          router.push('/patient/dashboard');
-        }}
-        onSelectDemoDoctor={() => {
-          switchToDoctorDemo();
-          router.push('/doctor/dashboard');
-        }}
       />
     </div>
   );

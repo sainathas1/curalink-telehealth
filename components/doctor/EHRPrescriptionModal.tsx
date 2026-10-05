@@ -26,20 +26,26 @@ export function EHRPrescriptionModal({
   isOpen,
   onClose,
   onIssuePrescription,
-  defaultPatientName = 'Sarah Jenkins',
-  defaultPatientId = 'patient_sarah_jenkins_01',
-  doctorName = 'Dr. Marcus Vance, MD',
-  doctorLicense = 'MD-CA-9938210',
+  defaultPatientName = '',
+  defaultPatientId = '',
+  doctorName = 'Attending Physician',
+  doctorLicense = 'MED-LICENSED',
 }: EHRPrescriptionModalProps) {
   const [patientName, setPatientName] = useState(defaultPatientName);
-  const [diagnosis, setDiagnosis] = useState('Essential Primary Hypertension (I10)');
-  const [medicationName, setMedicationName] = useState('Lisinopril-Hydrochlorothiazide');
-  const [dosage, setDosage] = useState('20 mg / 12.5 mg Oral Tablet');
-  const [frequency, setFrequency] = useState('Once daily in the morning');
-  const [duration, setDuration] = useState('90 Days');
-  const [refills, setRefills] = useState<number>(3);
-  const [instructions, setInstructions] = useState('Take with full glass of water. Monitor resting BP via IoT wearable.');
+  const [diagnosis, setDiagnosis] = useState('');
+  const [medicationName, setMedicationName] = useState('');
+  const [dosage, setDosage] = useState('');
+  const [frequency, setFrequency] = useState('');
+  const [duration, setDuration] = useState('');
+  const [refills, setRefills] = useState<number>(1);
+  const [instructions, setInstructions] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+
+  React.useEffect(() => {
+    if (defaultPatientName) {
+      setPatientName(defaultPatientName);
+    }
+  }, [defaultPatientName]);
 
   if (!isOpen) return null;
 
@@ -47,9 +53,9 @@ export function EHRPrescriptionModal({
     e.preventDefault();
     const newRx: Prescription = {
       id: `rx_${Date.now()}`,
-      patientId: defaultPatientId,
-      patientName,
-      doctorId: 'doc_marcus_vance_01',
+      patientId: defaultPatientId || 'patient_user',
+      patientName: patientName || 'Patient',
+      doctorId: 'attending_physician',
       doctorName,
       doctorLicense,
       medicationName,
@@ -58,7 +64,7 @@ export function EHRPrescriptionModal({
       duration,
       instructions,
       dateIssued: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      validUntil: 'Jan 04, 2027',
+      validUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       refillsLeft: refills,
       status: 'Active',
     };

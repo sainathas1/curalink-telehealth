@@ -18,18 +18,14 @@ import {
   ShieldCheck,
   AlertTriangle,
   ArrowRight,
-  Sparkles,
   CheckCircle2,
 } from 'lucide-react';
-import { MOCK_PATIENT_USER, MOCK_DOCTOR_USER } from '../../lib/mock-data';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (profile: UserProfile) => void;
   initialRole?: UserRole;
-  onSelectDemoPatient: () => void;
-  onSelectDemoDoctor: () => void;
 }
 
 export function AuthModal({
@@ -37,8 +33,6 @@ export function AuthModal({
   onClose,
   onSuccess,
   initialRole = 'Patient',
-  onSelectDemoPatient,
-  onSelectDemoDoctor,
 }: AuthModalProps) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [role, setRole] = useState<UserRole>(initialRole);
@@ -107,11 +101,11 @@ export function AuthModal({
     } catch (err: any) {
       console.error('Auth error:', err);
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
-        setError('Invalid credentials. Check your email/password or use 1-click demo login.');
+        setError('Invalid email or password. Please verify your credentials.');
       } else if (err.code === 'auth/email-already-in-use') {
         setError('This email is already registered. Please switch to Sign In.');
       } else {
-        setError(err.message || 'Authentication failed. Try demo accounts below.');
+        setError(err.message || 'Authentication failed. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -178,46 +172,6 @@ export function AuthModal({
         </div>
 
         <div className="p-6 space-y-5">
-          {/* Quick Demo Accounts Switcher Pill */}
-          <div className="bg-teal-50/70 border border-teal-200/80 p-3.5 rounded-2xl space-y-2">
-            <div className="flex items-center justify-between text-teal-900 font-bold text-[11px]">
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-teal-600" />
-                1-Click Instant Demo Login
-              </span>
-              <span className="text-[9px] uppercase tracking-wider text-teal-700 font-semibold bg-teal-100 px-1.5 py-0.5 rounded">
-                Recommended
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectDemoPatient();
-                  onClose();
-                }}
-                className="py-2 px-2.5 rounded-xl bg-white hover:bg-teal-600 hover:text-white text-slate-800 font-bold border border-teal-200 transition-all text-left shadow-xs cursor-pointer group"
-              >
-                <p className="text-xs truncate group-hover:text-white font-bold">Sarah Jenkins</p>
-                <p className="text-[10px] text-teal-700 group-hover:text-teal-100 font-medium">Patient Role</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectDemoDoctor();
-                  onClose();
-                }}
-                className="py-2 px-2.5 rounded-xl bg-white hover:bg-teal-600 hover:text-white text-slate-800 font-bold border border-teal-200 transition-all text-left shadow-xs cursor-pointer group"
-              >
-                <p className="text-xs truncate group-hover:text-white font-bold">Dr. Marcus Vance</p>
-                <p className="text-[10px] text-teal-700 group-hover:text-teal-100 font-medium">Cardiologist Role</p>
-              </button>
-            </div>
-          </div>
-
-
           {error && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />

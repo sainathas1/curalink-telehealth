@@ -1,12 +1,10 @@
 {
-  "projectId": "gen-lang-client-0885497074",
-  "appId": "1:679532822363:web:9dfc8c1dd41a9d465ba47e",
-  "apiKey": "AIzaSyBNDAJ3cH97Y4BSW6Rk67Rc27jdtaQL_Qo",
-  "authDomain": "gen-lang-client-0885497074.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-81490fae-422c-4fa9-a9e3-f1cce3f781cb",
-  "storageBucket": "gen-lang-client-0885497074.firebasestorage.app",
-  "messagingSenderId": "679532822363",
-  "measurementId": "",
-  "oAuthClientId": "679532822363-l0dhqt7nsrtm4upvs6j6817pjg6e376a.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "projectId": "curalink-telehealth",
+  "appId": "1:173041146452:web:119bf5252b45ad2743abc1",
+  "apiKey": "AIzaSyBW5RmoqsIcHqU5sOCiboPXeeAzoTnyymg",
+  "authDomain": "curalink-telehealth.firebaseapp.com",
+  "databaseURL": "https://curalink-telehealth-default-rtdb.asia-southeast1.firebasedatabase.app",
+  "storageBucket": "curalink-telehealth.firebasestorage.app",
+  "messagingSenderId": "173041146452",
+  "measurementId": "G-S1YHNP4BLF"
 }

@@ -1,10 +1,20 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+
+export const firebaseConfig = {
+  apiKey: "AIzaSyBW5RmoqsIcHqU5sOCiboPXeeAzoTnyymg",
+  authDomain: "curalink-telehealth.firebaseapp.com",
+  databaseURL: "https://curalink-telehealth-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "curalink-telehealth",
+  storageBucket: "curalink-telehealth.firebasestorage.app",
+  messagingSenderId: "173041146452",
+  appId: "1:173041146452:web:119bf5252b45ad2743abc1",
+  measurementId: "G-S1YHNP4BLF"
+};
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 

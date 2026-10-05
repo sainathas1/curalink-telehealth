@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CuraLink</string>
+    <string name="title_activity_main">CuraLink</string>
+    <string name="package_name">com.curalink.app</string>
+    <string name="custom_url_scheme">com.curalink.app</string>
+</resources>

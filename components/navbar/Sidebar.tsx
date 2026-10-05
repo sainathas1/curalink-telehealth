@@ -16,9 +16,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
+  Link as LinkIcon,
 } from 'lucide-react';
 
-export type PatientTab = 'overview' | 'vitals' | 'appointments' | 'prescriptions' | 'records';
+export type PatientTab = 'overview' | 'vitals' | 'device' | 'appointments' | 'prescriptions' | 'records';
 export type DoctorTab = 'clinical-queue' | 'ward-telemetry' | 'patient-directory' | 'ehr-prescribe' | 'hardware-hub';
 export type ActiveTab = PatientTab | DoctorTab;
 
@@ -44,6 +45,7 @@ export function Sidebar({
   const patientNavItems: { id: PatientTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: 'vitals', label: 'IoT Vitals Monitor', icon: <Activity className="w-5 h-5" />, badge: 'Live' },
+    { id: 'device', label: 'Connected Devices', icon: <LinkIcon className="w-5 h-5" />, badge: 'USB' },
     { id: 'appointments', label: 'Appointments', icon: <Calendar className="w-5 h-5" /> },
     { id: 'prescriptions', label: 'Prescriptions', icon: <Pill className="w-5 h-5" /> },
     { id: 'records', label: 'Medical Records', icon: <FileText className="w-5 h-5" /> },

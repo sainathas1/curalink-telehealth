@@ -189,6 +189,10 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
               chronicConditions: data.chronicConditions || [],
               currentMedications: data.currentMedications || 'None Reported',
               hasCompletedOnboarding: data.hasCompletedOnboarding === true,
+              lastSyncedTemperature: data.lastSyncedTemperature !== undefined ? data.lastSyncedTemperature : undefined,
+              lastSyncedAt: data.lastSyncedAt || undefined,
+              temperatureStatus: data.temperatureStatus || undefined,
+              deviceModel: data.deviceModel || undefined,
             });
           });
           setPatientDirectory(dir);

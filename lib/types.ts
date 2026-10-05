@@ -130,6 +130,10 @@ export interface PatientDirectoryItem {
   chronicConditions?: string[];
   currentMedications?: string;
   hasCompletedOnboarding?: boolean;
+  lastSyncedTemperature?: number;
+  lastSyncedAt?: string;
+  temperatureStatus?: 'normal' | 'elevated' | 'critical' | string;
+  deviceModel?: string;
   currentVitals: {
     heartRate: number;
     spo2: number;

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   UserProfile,
   Appointment,
@@ -8,6 +8,8 @@ import {
   PatientDirectoryItem,
 } from '../../lib/types';
 import { DoctorTab } from '../navbar/Sidebar';
+import { db } from '../../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import {
   Video,
   Users,
@@ -23,6 +25,11 @@ import {
   FilePlus,
   Droplet,
   Pill,
+  Thermometer,
+  Cpu,
+  X,
+  FileText,
+  ClipboardList,
 } from 'lucide-react';
 
 interface DoctorDashboardProps {
@@ -35,6 +42,14 @@ interface DoctorDashboardProps {
   onOpenEHR: (patientName: string) => void;
 }
 
+interface LivePatientIoTData {
+  lastSyncedTemperature?: number;
+  lastSyncedAt?: string;
+  temperatureStatus?: string;
+  deviceModel?: string;
+  temperatureUnit?: string;
+}
+
 export function DoctorDashboard({
   doctor,
   appointmentsQueue,
@@ -44,6 +59,56 @@ export function DoctorDashboard({
   onStartVideoCall,
   onOpenEHR,
 }: DoctorDashboardProps) {
+  const [selectedPatient, setSelectedPatient] = useState<PatientDirectoryItem | null>(null);
+  const [liveIoTData, setLiveIoTData] = useState<LivePatientIoTData | null>(null);
+  const [isLiveListening, setIsLiveListening] = useState(false);
+
+  useEffect(() => {
+    if (!selectedPatient?.id) {
+      setLiveIoTData(null);
+      setIsLiveListening(false);
+      return;
+    }
+
+    if (selectedPatient.lastSyncedTemperature !== undefined) {
+      setLiveIoTData({
+        lastSyncedTemperature: selectedPatient.lastSyncedTemperature,
+        lastSyncedAt: selectedPatient.lastSyncedAt,
+        temperatureStatus: selectedPatient.temperatureStatus,
+        deviceModel: selectedPatient.deviceModel,
+        temperatureUnit: '°C',
+      });
+    } else {
+      setLiveIoTData(null);
+    }
+
+    setIsLiveListening(true);
+    const userDocRef = doc(db, 'users', selectedPatient.id);
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.lastSyncedTemperature !== undefined) {
+            setLiveIoTData({
+              lastSyncedTemperature: data.lastSyncedTemperature,
+              lastSyncedAt: data.lastSyncedAt,
+              temperatureStatus: data.temperatureStatus,
+              deviceModel: data.deviceModel || 'USB Temperature Sensor',
+              temperatureUnit: data.temperatureUnit || '°C',
+            });
+          }
+        }
+      },
+      (err) => console.warn('Doctor dashboard live IoT onSnapshot notice:', err)
+    );
+
+    return () => {
+      unsubscribe();
+      setIsLiveListening(false);
+    };
+  }, [selectedPatient?.id]);
+
   const criticalCount = patients.filter((p) => p.status === 'Critical').length;
   const nextVisit = appointmentsQueue[0];
 
@@ -246,6 +311,12 @@ export function DoctorDashboard({
                           {bloodGroup}
                         </span>
                       )}
+                      {matchedPt?.lastSyncedTemperature !== undefined && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold font-mono">
+                          <Thermometer className="w-2.5 h-2.5 text-teal-600" />
+                          <span>{matchedPt.lastSyncedTemperature.toFixed(1)}°C (IoT)</span>
+                        </span>
+                      )}
                       {index === 0 && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse">
                           Ready to Start
@@ -287,6 +358,16 @@ export function DoctorDashboard({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {matchedPt && (
+                      <button
+                        onClick={() => setSelectedPatient(matchedPt)}
+                        className="p-2 rounded-xl border border-teal-200 hover:bg-teal-50 text-teal-700 transition-all cursor-pointer"
+                        title="Inspect Patient & IoT Vitals"
+                      >
+                        <ClipboardList className="w-4 h-4" />
+                      </button>
+                    )}
+
                     <button
                       onClick={() => onOpenEHR(apt.patientName)}
                       className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-all cursor-pointer"
@@ -310,6 +391,243 @@ export function DoctorDashboard({
           </div>
         )}
       </div>
+
+      {/* Patient Details & Real-Time IoT Vitals Modal */}
+      {selectedPatient && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150 overflow-y-auto"
+          onClick={() => setSelectedPatient(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-teal-950 text-white p-6 relative">
+              <button
+                onClick={() => setSelectedPatient(null)}
+                className="absolute right-4 top-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30">
+                  Clinical Intake Record
+                </span>
+                {selectedPatient.hasCompletedOnboarding ? (
+                  <span className="text-[10px] font-semibold text-emerald-300 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    Onboarding Complete
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold text-amber-300 flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-amber-400" />
+                    Pending Patient Intake
+                  </span>
+                )}
+              </div>
+
+              <h3 className="text-xl font-black tracking-tight">{selectedPatient.name}</h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                {selectedPatient.age} yrs • {selectedPatient.gender} • {selectedPatient.roomOrBed}
+              </p>
+            </div>
+
+            {/* Medical Data Details & Dedicated IoT Vitals */}
+            <div className="p-6 space-y-5 text-xs text-slate-700 max-h-[75vh] overflow-y-auto">
+              {/* Dedicated IoT Vitals Section */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 text-white border border-teal-500/30 shadow-md space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-36 h-36 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
+
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300">
+                      <Thermometer className="w-4 h-4 text-teal-300" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white text-xs tracking-tight">IoT Vitals</h4>
+                      <p className="text-[10px] text-teal-200/80">USB Sensor Hardware Telemetry</p>
+                    </div>
+                  </div>
+
+                  {isLiveListening && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      Live onSnapshot
+                    </span>
+                  )}
+                </div>
+
+                {liveIoTData?.lastSyncedTemperature !== undefined && liveIoTData.lastSyncedTemperature !== null ? (
+                  <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/15 space-y-2.5 relative z-10">
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-teal-200 tracking-wider">
+                          Body Temperature (Synced)
+                        </span>
+                        <div className="flex items-baseline gap-2 mt-0.5">
+                          <span className="text-3xl font-black font-mono text-white">
+                            {liveIoTData.lastSyncedTemperature.toFixed(1)}°C
+                          </span>
+                          <span className="text-xs text-slate-300 font-mono">
+                            ({((liveIoTData.lastSyncedTemperature * 9) / 5 + 32).toFixed(1)}°F)
+                          </span>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          liveIoTData.temperatureStatus === 'critical'
+                            ? 'bg-rose-500 text-white animate-pulse'
+                            : liveIoTData.temperatureStatus === 'elevated'
+                            ? 'bg-amber-400 text-slate-900'
+                            : 'bg-emerald-500 text-white'
+                        }`}
+                      >
+                        {liveIoTData.temperatureStatus === 'critical'
+                          ? 'High Fever'
+                          : liveIoTData.temperatureStatus === 'elevated'
+                          ? 'Mild Fever'
+                          : 'Normal'}
+                      </span>
+                    </div>
+
+                    <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-300">
+                      <span className="flex items-center gap-1.5 truncate">
+                        <Cpu className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                        <span>{liveIoTData.deviceModel || 'USB Serial Temperature Sensor'}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5 shrink-0 font-mono text-teal-200">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>
+                          {liveIoTData.lastSyncedAt
+                            ? new Date(liveIoTData.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                            : 'Synced'}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white/5 rounded-xl p-3 border border-white/10 text-center relative z-10">
+                    <p className="text-xs text-slate-300 font-medium">No USB telemetry synced yet</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Patient has not synced temperature data via /patient/device.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Blood Group */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-rose-50/60 border border-rose-200/80">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600 font-bold">
+                    <Droplet className="w-4 h-4 fill-rose-600" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900 text-xs">Blood Group / Type</p>
+                    <p className="text-[11px] text-slate-500">Clinical cross-matching baseline</p>
+                  </div>
+                </div>
+                <span className="text-base font-black font-mono text-rose-700 bg-white px-3 py-1 rounded-xl border border-rose-200 shadow-xs">
+                  {selectedPatient.bloodGroup || 'Not Reported'}
+                </span>
+              </div>
+
+              {/* Known Allergies */}
+              <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-1.5">
+                <div className="flex items-center gap-2 text-amber-800 font-bold">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <span>Known Drug & Environmental Allergies</span>
+                </div>
+                <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-amber-200/60 font-medium">
+                  {selectedPatient.knownAllergies || 'None reported by patient.'}
+                </p>
+              </div>
+
+              {/* Chronic Conditions */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center gap-2 text-slate-800 font-bold">
+                  <Activity className="w-4 h-4 text-teal-600" />
+                  <span>Diagnosed Chronic Conditions</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedPatient.chronicConditions && selectedPatient.chronicConditions.length > 0 ? (
+                    selectedPatient.chronicConditions.map((cond) => (
+                      <span
+                        key={cond}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold border ${
+                          cond === 'None'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : 'bg-teal-50 text-teal-800 border-teal-200'
+                        }`}
+                      >
+                        {cond}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-500">None reported</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Current Medications */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
+                <div className="flex items-center gap-2 text-slate-800 font-bold">
+                  <Pill className="w-4 h-4 text-teal-600" />
+                  <span>Current Medications & Dosages</span>
+                </div>
+                <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-slate-200 font-mono whitespace-pre-wrap">
+                  {selectedPatient.currentMedications || 'None currently prescribed or reported.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                onClick={() => {
+                  const ptName = selectedPatient.name;
+                  setSelectedPatient(null);
+                  onOpenEHR(ptName);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <FileText className="w-4 h-4 text-teal-600" />
+                <span>Issue Prescription</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const matchedApt = appointmentsQueue.find((a) => a.patientId === selectedPatient.id || a.patientName === selectedPatient.name);
+                  setSelectedPatient(null);
+                  if (matchedApt) {
+                    onStartVideoCall(matchedApt);
+                  } else {
+                    onStartVideoCall({
+                      id: `apt_quick_${Date.now()}`,
+                      patientId: selectedPatient.id,
+                      patientName: selectedPatient.name,
+                      doctorId: doctor.uid,
+                      doctorName: doctor.fullName,
+                      doctorSpecialty: doctor.specialty || 'Telehealth Care',
+                      date: 'Today',
+                      time: 'Now',
+                      type: 'Video Call',
+                      status: 'Upcoming',
+                      symptoms: selectedPatient.condition || 'General Telehealth Observation',
+                    });
+                  }
+                }}
+                className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Video className="w-4 h-4" />
+                <span>Start Video Call</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

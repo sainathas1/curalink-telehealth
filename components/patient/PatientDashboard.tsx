@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   UserProfile,
   LiveTelemetryPayload,
@@ -9,6 +9,8 @@ import {
   MedicalRecord,
 } from '../../lib/types';
 import { PatientTab } from '../navbar/Sidebar';
+import { db } from '../../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import {
   Heart,
   Droplets,
@@ -49,6 +51,40 @@ export function PatientDashboard({
 }: PatientDashboardProps) {
   const nextAppointment = appointments.find((a) => a.status === 'Upcoming');
   const activePrescriptions = prescriptions.filter((p) => p.status === 'Active');
+
+  const [hardwareTemp, setHardwareTemp] = useState<number | null>(null);
+  const [hardwareTime, setHardwareTime] = useState<string | null>(null);
+  const [hardwareStatus, setHardwareStatus] = useState<string>('normal');
+  const [deviceModel, setDeviceModel] = useState<string>('USB Sensor');
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const unsub = onSnapshot(
+      userDocRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.lastSyncedTemperature !== undefined) {
+            setHardwareTemp(data.lastSyncedTemperature);
+          }
+          if (data.lastSyncedAt) {
+            setHardwareTime(data.lastSyncedAt);
+          }
+          if (data.temperatureStatus) {
+            setHardwareStatus(data.temperatureStatus);
+          }
+          if (data.deviceModel) {
+            setDeviceModel(data.deviceModel);
+          }
+        }
+      },
+      (err) => console.warn('Hardware telemetry fetch notice:', err)
+    );
+
+    return () => unsub();
+  }, [user?.uid]);
 
   return (
     <div className="space-y-6">
@@ -96,8 +132,8 @@ export function PatientDashboard({
         </div>
       </div>
 
-      {/* 3 Summary Cards: Next Appointment, Active Prescriptions, Latest Vitals */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* 4 Summary Cards: Next Appointment, Active Prescriptions, Latest Vitals, Hardware Telemetry */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Next Appointment */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
           <div>
@@ -283,6 +319,68 @@ export function PatientDashboard({
             >
               <Activity className="w-3.5 h-3.5 text-teal-400" />
               <span>Open Vitals Monitor</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Card 4: Hardware Telemetry */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Hardware Telemetry
+              </span>
+              <div className="w-8 h-8 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600">
+                <Thermometer className="w-4 h-4" />
+              </div>
+            </div>
+
+            {hardwareTemp !== null ? (
+              <div className="mt-4 space-y-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-slate-900 font-mono">
+                    {hardwareTemp.toFixed(1)}°C
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      hardwareStatus === 'critical'
+                        ? 'bg-rose-100 text-rose-800'
+                        : hardwareStatus === 'elevated'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}
+                  >
+                    {hardwareStatus === 'critical'
+                      ? 'Fever'
+                      : hardwareStatus === 'elevated'
+                      ? 'Mild'
+                      : 'Normal'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 font-medium">Source: {deviceModel}</p>
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-[11px] flex items-center gap-2 text-slate-600">
+                  <Clock className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                  <span className="truncate">
+                    {hardwareTime ? `Synced: ${new Date(hardwareTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Synced recently'}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="py-6 text-center text-xs text-slate-400">
+                <Thermometer className="w-6 h-6 text-slate-300 mx-auto mb-1 stroke-1" />
+                <p className="font-semibold text-slate-600">No USB Telemetry Synced</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Connect your USB sensor to stream vitals.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <button
+              onClick={() => onNavigateTab('device')}
+              className="w-full py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+            >
+              <Thermometer className="w-3.5 h-3.5" />
+              <span>Record Vitals</span>
             </button>
           </div>
         </div>

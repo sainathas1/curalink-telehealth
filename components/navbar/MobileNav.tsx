@@ -13,6 +13,7 @@ import {
   Video,
   Stethoscope,
   Cpu,
+  Link as LinkIcon,
 } from 'lucide-react';
 
 interface MobileNavProps {
@@ -31,6 +32,7 @@ export function MobileNav({
   const patientTabs: { id: PatientTab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Home', icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: 'vitals', label: 'Vitals', icon: <Activity className="w-5 h-5" /> },
+    { id: 'device', label: 'Devices', icon: <LinkIcon className="w-5 h-5" /> },
     { id: 'appointments', label: 'Visits', icon: <Calendar className="w-5 h-5" /> },
     { id: 'prescriptions', label: 'Rx', icon: <Pill className="w-5 h-5" /> },
     { id: 'records', label: 'Records', icon: <FileText className="w-5 h-5" /> },

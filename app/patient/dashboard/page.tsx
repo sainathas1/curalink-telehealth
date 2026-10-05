@@ -30,6 +30,9 @@ export default function PatientDashboardRoute() {
       case 'vitals':
         router.push('/patient/vitals');
         break;
+      case 'device':
+        router.push('/patient/device');
+        break;
       case 'appointments':
         router.push('/patient/appointments');
         break;

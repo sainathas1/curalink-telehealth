@@ -54,6 +54,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
   // Determine active tab from pathname
   let activeTab: PatientTab = 'overview';
   if (pathname.includes('/patient/vitals')) activeTab = 'vitals';
+  else if (pathname.includes('/patient/device')) activeTab = 'device';
   else if (pathname.includes('/patient/appointments')) activeTab = 'appointments';
   else if (pathname.includes('/patient/prescriptions')) activeTab = 'prescriptions';
   else if (pathname.includes('/patient/records')) activeTab = 'records';
@@ -62,6 +63,9 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
     switch (tab) {
       case 'vitals':
         router.push('/patient/vitals');
+        break;
+      case 'device':
+        router.push('/patient/device');
         break;
       case 'appointments':
         router.push('/patient/appointments');

@@ -13,6 +13,7 @@ import {
   Droplet,
   AlertTriangle,
   Activity,
+  Thermometer,
 } from 'lucide-react';
 
 interface EHRPrescriptionModalProps {
@@ -133,12 +134,20 @@ export function EHRPrescriptionModal({
                     <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
                     Verified Medical History on File
                   </span>
-                  {bloodGroup && bloodGroup !== 'Not specified' && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-mono font-bold">
-                      <Droplet className="w-3 h-3 fill-rose-500 text-rose-500" />
-                      Blood: {bloodGroup}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {bloodGroup && bloodGroup !== 'Not specified' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-mono font-bold">
+                        <Droplet className="w-3 h-3 fill-rose-500 text-rose-500" />
+                        Blood: {bloodGroup}
+                      </span>
+                    )}
+                    {matchedPt?.lastSyncedTemperature !== undefined && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 border border-teal-300 text-[10px] font-mono font-bold">
+                        <Thermometer className="w-3 h-3 text-teal-600" />
+                        IoT Temp: {matchedPt.lastSyncedTemperature.toFixed(1)}°C
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">

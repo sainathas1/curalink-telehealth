@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PatientDirectoryItem } from '../../lib/types';
+import { db } from '../../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import {
   Users,
   Search,
@@ -17,12 +19,22 @@ import {
   X,
   ShieldCheck,
   Stethoscope,
+  Thermometer,
+  Cpu,
 } from 'lucide-react';
 
 interface PatientDirectoryProps {
   patients: PatientDirectoryItem[];
   onStartVideoCall: (patientName: string) => void;
   onOpenEHR: (patientName: string) => void;
+}
+
+interface LivePatientIoTData {
+  lastSyncedTemperature?: number;
+  lastSyncedAt?: string;
+  temperatureStatus?: string;
+  deviceModel?: string;
+  temperatureUnit?: string;
 }
 
 export function PatientDirectory({
@@ -32,6 +44,56 @@ export function PatientDirectory({
 }: PatientDirectoryProps) {
   const [search, setSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<PatientDirectoryItem | null>(null);
+  const [liveIoTData, setLiveIoTData] = useState<LivePatientIoTData | null>(null);
+  const [isLiveListening, setIsLiveListening] = useState(false);
+
+  useEffect(() => {
+    if (!selectedPatient?.id) {
+      setLiveIoTData(null);
+      setIsLiveListening(false);
+      return;
+    }
+
+    if (selectedPatient.lastSyncedTemperature !== undefined) {
+      setLiveIoTData({
+        lastSyncedTemperature: selectedPatient.lastSyncedTemperature,
+        lastSyncedAt: selectedPatient.lastSyncedAt,
+        temperatureStatus: selectedPatient.temperatureStatus,
+        deviceModel: selectedPatient.deviceModel,
+        temperatureUnit: '°C',
+      });
+    } else {
+      setLiveIoTData(null);
+    }
+
+    setIsLiveListening(true);
+    const userDocRef = doc(db, 'users', selectedPatient.id);
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.lastSyncedTemperature !== undefined) {
+            setLiveIoTData({
+              lastSyncedTemperature: data.lastSyncedTemperature,
+              lastSyncedAt: data.lastSyncedAt,
+              temperatureStatus: data.temperatureStatus,
+              deviceModel: data.deviceModel || 'USB Temperature Sensor',
+              temperatureUnit: data.temperatureUnit || '°C',
+            });
+          }
+        }
+      },
+      (error) => {
+        console.warn('Doctor live IoT vitals onSnapshot notice:', error);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      setIsLiveListening(false);
+    };
+  }, [selectedPatient?.id]);
 
   const filtered = patients.filter(
     (p) =>
@@ -193,6 +255,14 @@ export function PatientDirectory({
                           <span>•</span>
                           <span>{pt.currentVitals.bloodPressure}</span>
                         </div>
+                        {pt.lastSyncedTemperature !== undefined && (
+                          <div className="mt-1 flex items-center gap-1">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold font-mono">
+                              <Thermometer className="w-3 h-3 text-teal-600" />
+                              <span>{pt.lastSyncedTemperature.toFixed(1)}°C (IoT USB)</span>
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Last Consultation */}
@@ -207,7 +277,7 @@ export function PatientDirectory({
                           <button
                             onClick={() => setSelectedPatient(pt)}
                             className="p-2 rounded-xl text-teal-700 hover:bg-teal-50 border border-teal-200 transition-all cursor-pointer"
-                            title="View Complete Medical History"
+                            title="View Complete Medical History & IoT Telemetry"
                           >
                             <ClipboardList className="w-4 h-4" />
                           </button>
@@ -238,14 +308,14 @@ export function PatientDirectory({
         </div>
       </div>
 
-      {/* Patient Medical History Inspection Modal */}
+      {/* Patient Medical History & IoT Vitals Inspection Modal */}
       {selectedPatient && (
         <div
-          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150 overflow-y-auto"
           onClick={() => setSelectedPatient(null)}
         >
           <div
-            className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200"
+            className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 my-8"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -281,7 +351,89 @@ export function PatientDirectory({
             </div>
 
             {/* Medical Data Details */}
-            <div className="p-6 space-y-5 text-xs text-slate-700">
+            <div className="p-6 space-y-5 text-xs text-slate-700 max-h-[75vh] overflow-y-auto">
+              {/* Dedicated IoT Vitals Section (Real-Time USB Telemetry Stream) */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 text-white border border-teal-500/30 shadow-md space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-36 h-36 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
+
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300">
+                      <Thermometer className="w-4 h-4 text-teal-300" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white text-xs tracking-tight">IoT Vitals</h4>
+                      <p className="text-[10px] text-teal-200/80">USB Sensor Hardware Telemetry</p>
+                    </div>
+                  </div>
+
+                  {isLiveListening && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      Live onSnapshot
+                    </span>
+                  )}
+                </div>
+
+                {liveIoTData?.lastSyncedTemperature !== undefined && liveIoTData.lastSyncedTemperature !== null ? (
+                  <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/15 space-y-2.5 relative z-10">
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-teal-200 tracking-wider">
+                          Body Temperature (Synced)
+                        </span>
+                        <div className="flex items-baseline gap-2 mt-0.5">
+                          <span className="text-3xl font-black font-mono text-white">
+                            {liveIoTData.lastSyncedTemperature.toFixed(1)}°C
+                          </span>
+                          <span className="text-xs text-slate-300 font-mono">
+                            ({((liveIoTData.lastSyncedTemperature * 9) / 5 + 32).toFixed(1)}°F)
+                          </span>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          liveIoTData.temperatureStatus === 'critical'
+                            ? 'bg-rose-500 text-white animate-pulse'
+                            : liveIoTData.temperatureStatus === 'elevated'
+                            ? 'bg-amber-400 text-slate-900'
+                            : 'bg-emerald-500 text-white'
+                        }`}
+                      >
+                        {liveIoTData.temperatureStatus === 'critical'
+                          ? 'High Fever'
+                          : liveIoTData.temperatureStatus === 'elevated'
+                          ? 'Mild Fever'
+                          : 'Normal'}
+                      </span>
+                    </div>
+
+                    <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-300">
+                      <span className="flex items-center gap-1.5 truncate">
+                        <Cpu className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                        <span>{liveIoTData.deviceModel || 'USB Serial Temperature Sensor'}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5 shrink-0 font-mono text-teal-200">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>
+                          {liveIoTData.lastSyncedAt
+                            ? new Date(liveIoTData.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                            : 'Synced'}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white/5 rounded-xl p-3 border border-white/10 text-center relative z-10">
+                    <p className="text-xs text-slate-300 font-medium">No USB telemetry synced yet</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Patient has not synced temperature data via /patient/device.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Blood Group */}
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-rose-50/60 border border-rose-200/80">
                 <div className="flex items-center gap-2.5">

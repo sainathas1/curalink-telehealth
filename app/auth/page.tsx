@@ -42,6 +42,8 @@ export default function AuthPage() {
     setAuthenticatedProfile(profile);
     if (profile.role === 'Doctor') {
       router.push('/doctor/dashboard');
+    } else if (profile.hasCompletedOnboarding === false) {
+      router.push('/onboarding');
     } else {
       router.push('/patient/dashboard');
     }
@@ -63,6 +65,7 @@ export default function AuthPage() {
           specialty: role === 'Doctor' ? specialty : undefined,
           licenseNumber: role === 'Doctor' ? `MD-CA-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
           isVerified: role === 'Doctor' ? false : true,
+          hasCompletedOnboarding: role === 'Patient' ? false : true,
         };
 
         try {
@@ -123,6 +126,7 @@ export default function AuthPage() {
         specialty: role === 'Doctor' ? 'General Tele-Medicine' : undefined,
         licenseNumber: role === 'Doctor' ? `MD-GOOG-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
         isVerified: role === 'Doctor' ? false : true,
+        hasCompletedOnboarding: role === 'Patient' ? false : true,
       };
 
       try {

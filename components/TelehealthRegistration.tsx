@@ -179,6 +179,7 @@ export default function TelehealthRegistration() {
         email: trimmedEmail,
         role: role,
         createdAt: serverTimestamp(),
+        hasCompletedOnboarding: role === 'Patient' ? false : true,
       };
       if (trimmedPhone) {
         newUserData.phoneNumber = trimmedPhone;

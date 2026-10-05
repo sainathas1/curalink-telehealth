@@ -170,6 +170,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         onIssuePrescription={addPrescription}
         defaultPatientName={targetEhrPatientName}
         doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician'}
+        patientDirectory={patientDirectory}
       />
 
       <HardwareSimulatorDrawer

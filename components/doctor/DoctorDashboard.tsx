@@ -21,6 +21,8 @@ import {
   ShieldCheck,
   CheckCircle2,
   FilePlus,
+  Droplet,
+  Pill,
 } from 'lucide-react';
 
 interface DoctorDashboardProps {
@@ -206,7 +208,16 @@ export function DoctorDashboard({
           </div>
         ) : (
           <div className="space-y-3">
-            {appointmentsQueue.map((apt, index) => (
+            {appointmentsQueue.map((apt, index) => {
+              const matchedPt = patients.find(
+                (p) => p.id === apt.patientId || p.name.toLowerCase() === apt.patientName.toLowerCase()
+              );
+              const bloodGroup = apt.bloodGroup || matchedPt?.bloodGroup;
+              const allergies = apt.knownAllergies || matchedPt?.knownAllergies;
+              const chronic = apt.chronicConditions || matchedPt?.chronicConditions || [];
+              const hasAllergies = allergies && allergies.toLowerCase() !== 'none' && allergies.toLowerCase() !== 'none reported';
+
+              return (
               <div
                 key={apt.id}
                 className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
@@ -224,20 +235,45 @@ export function DoctorDashboard({
                   </div>
 
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h4 className="text-sm font-bold text-slate-900">{apt.patientName}</h4>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                         {apt.type}
                       </span>
+                      {bloodGroup && bloodGroup !== 'Not specified' && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold font-mono">
+                          <Droplet className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
+                          {bloodGroup}
+                        </span>
+                      )}
                       {index === 0 && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse">
                           Ready to Start
                         </span>
                       )}
                     </div>
+
                     <p className="text-xs text-slate-600 mt-1 max-w-xl">
                       <strong className="text-slate-800">Chief Symptoms:</strong> {apt.symptoms}
                     </p>
+
+                    {/* Medical History Badges */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      {hasAllergies && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-semibold">
+                          <AlertTriangle className="w-3 h-3 text-amber-600" />
+                          <span>Allergy: {allergies}</span>
+                        </span>
+                      )}
+                      {chronic.filter(c => c !== 'None').map((c) => (
+                        <span
+                          key={c}
+                          className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-medium"
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -269,7 +305,8 @@ export function DoctorDashboard({
                   </div>
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
         )}
       </div>

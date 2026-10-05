@@ -182,6 +182,13 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
                 temperature: 0,
                 bloodPressure: '--/--',
               },
+              bloodGroup: data.bloodGroup || data.bloodType || 'Not specified',
+              bloodType: data.bloodType || data.bloodGroup || 'Not specified',
+              allergies: data.allergies || (data.knownAllergies ? [data.knownAllergies] : []),
+              knownAllergies: data.knownAllergies || (data.allergies ? data.allergies.join(', ') : 'None Reported'),
+              chronicConditions: data.chronicConditions || [],
+              currentMedications: data.currentMedications || 'None Reported',
+              hasCompletedOnboarding: data.hasCompletedOnboarding === true,
             });
           });
           setPatientDirectory(dir);

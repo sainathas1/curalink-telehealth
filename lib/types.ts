@@ -10,10 +10,15 @@ export interface UserProfile {
   specialty?: string; // For doctors
   licenseNumber?: string; // For doctors
   isVerified?: boolean; // For doctor credential verification
+  hasCompletedOnboarding?: boolean; // Mandatory medical onboarding for patients
   dateOfBirth?: string; // For patients
   bloodType?: string; // For patients
+  bloodGroup?: string; // Blood Group (A+, B+, etc.)
   emergencyContact?: string; // For patients
   allergies?: string[];
+  knownAllergies?: string; // Known allergies text
+  chronicConditions?: string[]; // Diabetes, Hypertension, Asthma, None, etc.
+  currentMedications?: string; // Current medications text
   assignedDoctorId?: string;
 }
 
@@ -66,6 +71,10 @@ export interface Appointment {
   status: 'Upcoming' | 'In Progress' | 'Completed' | 'Cancelled';
   symptoms: string;
   meetingLink?: string;
+  bloodGroup?: string;
+  knownAllergies?: string;
+  chronicConditions?: string[];
+  currentMedications?: string;
   paymentStatus?: 'Paid' | 'Pending' | 'Waived';
   paymentAmount?: number;
   paymentTxnId?: string;
@@ -114,6 +123,13 @@ export interface PatientDirectoryItem {
   assignedDoctor: string;
   lastVisit: string;
   nextAppointment?: string;
+  bloodGroup?: string;
+  bloodType?: string;
+  allergies?: string[];
+  knownAllergies?: string;
+  chronicConditions?: string[];
+  currentMedications?: string;
+  hasCompletedOnboarding?: boolean;
   currentVitals: {
     heartRate: number;
     spo2: number;

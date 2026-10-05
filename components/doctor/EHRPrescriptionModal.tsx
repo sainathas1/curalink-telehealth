@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Prescription } from '../../lib/types';
+import { Prescription, PatientDirectoryItem } from '../../lib/types';
 import {
   X,
   Stethoscope,
@@ -10,6 +10,9 @@ import {
   CheckCircle2,
   FileCheck,
   Calendar,
+  Droplet,
+  AlertTriangle,
+  Activity,
 } from 'lucide-react';
 
 interface EHRPrescriptionModalProps {
@@ -20,6 +23,7 @@ interface EHRPrescriptionModalProps {
   defaultPatientId?: string;
   doctorName?: string;
   doctorLicense?: string;
+  patientDirectory?: PatientDirectoryItem[];
 }
 
 export function EHRPrescriptionModal({
@@ -30,6 +34,7 @@ export function EHRPrescriptionModal({
   defaultPatientId = '',
   doctorName = 'Attending Physician',
   doctorLicense = 'MED-LICENSED',
+  patientDirectory = [],
 }: EHRPrescriptionModalProps) {
   const [patientName, setPatientName] = useState(defaultPatientName);
   const [diagnosis, setDiagnosis] = useState('');
@@ -77,6 +82,15 @@ export function EHRPrescriptionModal({
     }, 1200);
   };
 
+  const matchedPt = patientDirectory.find(
+    (p) => p.name.toLowerCase() === patientName.toLowerCase() || (defaultPatientId && p.id === defaultPatientId)
+  );
+  const bloodGroup = matchedPt?.bloodGroup;
+  const allergies = matchedPt?.knownAllergies;
+  const chronic = matchedPt?.chronicConditions || [];
+  const currentMeds = matchedPt?.currentMedications;
+  const hasAllergies = allergies && allergies.toLowerCase() !== 'none' && allergies.toLowerCase() !== 'none reported';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
@@ -111,6 +125,55 @@ export function EHRPrescriptionModal({
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-5 text-xs">
+            {/* Medical History Safety Check Card */}
+            {matchedPt && (
+              <div className="p-3.5 rounded-2xl bg-teal-50/70 border border-teal-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
+                    Verified Medical History on File
+                  </span>
+                  {bloodGroup && bloodGroup !== 'Not specified' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-mono font-bold">
+                      <Droplet className="w-3 h-3 fill-rose-500 text-rose-500" />
+                      Blood: {bloodGroup}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  {/* Allergies Alert */}
+                  <div className={`p-2 rounded-xl border ${hasAllergies ? 'bg-amber-50/80 border-amber-200 text-amber-900 font-semibold' : 'bg-white/80 border-slate-200 text-slate-600'}`}>
+                    <div className="flex items-center gap-1">
+                      {hasAllergies ? <AlertTriangle className="w-3 h-3 text-amber-600" /> : <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                      <span className="font-bold">Allergies:</span>
+                    </div>
+                    <p className="mt-0.5 truncate">{allergies || 'No known allergies'}</p>
+                  </div>
+
+                  {/* Current Medications */}
+                  <div className="p-2 rounded-xl bg-white/80 border border-slate-200 text-slate-700">
+                    <div className="flex items-center gap-1 font-bold">
+                      <Pill className="w-3 h-3 text-teal-600" />
+                      <span>Current Meds:</span>
+                    </div>
+                    <p className="mt-0.5 truncate">{currentMeds || 'None reported'}</p>
+                  </div>
+                </div>
+
+                {chronic.filter(c => c !== 'None').length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1 pt-1">
+                    <span className="text-[10px] font-bold text-slate-500">Chronic Conditions:</span>
+                    {chronic.filter(c => c !== 'None').map(c => (
+                      <span key={c} className="px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] text-slate-700 font-medium">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Patient & Diagnosis Summary */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

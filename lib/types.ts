@@ -9,6 +9,7 @@ export interface UserProfile {
   avatarUrl?: string;
   specialty?: string; // For doctors
   licenseNumber?: string; // For doctors
+  isVerified?: boolean; // For doctor credential verification
   dateOfBirth?: string; // For patients
   bloodType?: string; // For patients
   emergencyContact?: string; // For patients

@@ -60,6 +60,7 @@ export function AuthModal({
           role,
           specialty: role === 'Doctor' ? specialty : undefined,
           licenseNumber: role === 'Doctor' ? `MD-TELE-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
+          isVerified: role === 'Doctor' ? false : true,
         };
 
         try {
@@ -123,6 +124,8 @@ export function AuthModal({
         email: userCred.user.email || 'user@curalink.health',
         role,
         specialty: role === 'Doctor' ? 'General Tele-Medicine' : undefined,
+        licenseNumber: role === 'Doctor' ? `MD-GOOG-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
+        isVerified: role === 'Doctor' ? false : true,
       };
 
       try {

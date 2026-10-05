@@ -33,18 +33,15 @@ service cloud.firestore {
         data.createdAt is timestamp;
     }
 
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'sainathas8788@gmail.com';
+    }
+
     match /users/{userId} {
-      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
-      allow list: if isSignedIn() && resource.data.uid == request.auth.uid;
-      allow create: if isSignedIn() && isValidId(userId) && request.auth.uid == userId && isValidUser(incoming());
-      allow update: if isSignedIn() && isValidId(userId) && request.auth.uid == userId &&
-        isValidUser(incoming()) &&
-        incoming().uid == existing().uid &&
-        incoming().email == existing().email &&
-        incoming().createdAt == existing().createdAt &&
-        incoming().role == existing().role &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'updatedAt', 'phoneNumber']);
-      allow delete: if false;
+      allow get, list: if isAdmin() || (isSignedIn() && (resource == null || resource.data.uid == request.auth.uid));
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow delete: if isAdmin();
     }
   }
 }

@@ -173,15 +173,15 @@ export default function TelehealthRegistration() {
       // 2. Save user's Full Name, Email, Phone, and Role to Firestore collection 'users'
       const userDocRef = doc(db, 'users', user.uid);
       const trimmedPhone = phoneNumber.trim();
-      const enforcedRole: 'patient' | 'doctor' = role.toLowerCase() === 'doctor' ? 'doctor' : 'patient';
+      const accountType = role;
       const newUserData: Record<string, unknown> = {
         uid: user.uid,
         fullName: trimmedName,
         email: trimmedEmail,
-        role: enforcedRole,
+        role: accountType.toLowerCase(),
         isVerified: false,
         createdAt: serverTimestamp(),
-        hasCompletedOnboarding: enforcedRole === 'patient' ? false : true,
+        hasCompletedOnboarding: accountType.toLowerCase() === 'patient' ? false : true,
       };
       if (trimmedPhone) {
         newUserData.phoneNumber = trimmedPhone;
@@ -291,15 +291,15 @@ export default function TelehealthRegistration() {
       const resolvedPhone = phoneNumber.trim() || user.phoneNumber || '';
 
       if (!existingSnap.exists()) {
-        const enforcedRole: 'patient' | 'doctor' = role.toLowerCase() === 'doctor' ? 'doctor' : 'patient';
+        const accountType = role;
         const newUserData: Record<string, unknown> = {
           uid: user.uid,
           fullName: resolvedName,
           email: resolvedEmail,
-          role: enforcedRole,
+          role: accountType.toLowerCase(),
           isVerified: false,
-          hasCompletedOnboarding: enforcedRole === 'patient' ? false : true,
           createdAt: serverTimestamp(),
+          hasCompletedOnboarding: accountType.toLowerCase() === 'patient' ? false : true,
         };
         if (resolvedPhone) {
           newUserData.phoneNumber = resolvedPhone;

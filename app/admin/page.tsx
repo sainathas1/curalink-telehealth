@@ -57,6 +57,7 @@ interface DoctorUser {
   isVerified?: boolean;
   verifiedAt?: string;
   createdAt?: string;
+  rawCreatedAt?: any;
 }
 
 interface PatientUser {
@@ -78,6 +79,7 @@ interface PatientUser {
   deviceModel?: string;
   hardwareId?: string;
   createdAt?: string;
+  rawCreatedAt?: any;
 }
 
 export default function AdminMasterCommandCenterPage() {
@@ -164,8 +166,23 @@ export default function AdminMasterCommandCenterPage() {
                 ? data.createdAt
                 : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
               : 'Recent',
+            rawCreatedAt: data.createdAt,
           };
         });
+
+        // Sort by date in frontend JavaScript using .sort()
+        docsList.sort((a, b) => {
+          const parseTime = (val: any): number => {
+            if (!val) return 0;
+            if (typeof val?.toMillis === 'function') return val.toMillis();
+            if (typeof val?.toDate === 'function') return val.toDate().getTime();
+            if (typeof val === 'number') return val;
+            const t = new Date(val).getTime();
+            return isNaN(t) ? 0 : t;
+          };
+          return parseTime(b.rawCreatedAt) - parseTime(a.rawCreatedAt);
+        });
+
         setDoctors(docsList);
         doctorsLoaded = true;
         checkLoadingDone();
@@ -210,8 +227,23 @@ export default function AdminMasterCommandCenterPage() {
                 ? data.createdAt
                 : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
               : 'Recent',
+            rawCreatedAt: data.createdAt,
           };
         });
+
+        // Sort by date in frontend JavaScript using .sort()
+        patsList.sort((a, b) => {
+          const parseTime = (val: any): number => {
+            if (!val) return 0;
+            if (typeof val?.toMillis === 'function') return val.toMillis();
+            if (typeof val?.toDate === 'function') return val.toDate().getTime();
+            if (typeof val === 'number') return val;
+            const t = new Date(val).getTime();
+            return isNaN(t) ? 0 : t;
+          };
+          return parseTime(b.rawCreatedAt) - parseTime(a.rawCreatedAt);
+        });
+
         setPatients(patsList);
         patientsLoaded = true;
         checkLoadingDone();
@@ -747,22 +779,23 @@ export default function AdminMasterCommandCenterPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
                     {filteredDoctors.map((doc) => {
-                      const isActing = actionDoctorId === doc.id;
-                      const isVerified = doc.isVerified === true;
+                      const user = doc;
+                      const isActing = actionDoctorId === user.id;
+                      const isVerified = user.isVerified === true;
 
                       return (
-                        <tr key={doc.id} className="hover:bg-slate-800/40 transition-colors group">
+                        <tr key={user.id} className="hover:bg-slate-800/40 transition-colors group">
                           {/* Name & Specialty */}
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-3">
                               <div
                                 className={`w-9 h-9 rounded-xl border flex items-center justify-center font-bold text-xs shrink-0 ${
-                                  isVerified
+                                  user.isVerified === true
                                     ? 'bg-teal-500/15 border-teal-500/30 text-teal-300'
                                     : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
                                 }`}
                               >
-                                {(doc.fullName || 'Dr. Clinician')
+                                {(user.fullName || 'Dr. Clinician')
                                   .split(' ')
                                   .filter(Boolean)
                                   .map((n) => n[0])
@@ -772,9 +805,9 @@ export default function AdminMasterCommandCenterPage() {
                               </div>
                               <div>
                                 <div className="font-semibold text-white text-xs group-hover:text-teal-300 transition-colors">
-                                  {doc.fullName?.trim() || 'Dr. Clinician'}
+                                  {user.fullName?.trim() || 'Dr. Clinician'}
                                 </div>
-                                <div className="text-[11px] text-slate-400">{doc.specialty?.trim() || 'General Tele-Medicine'}</div>
+                                <div className="text-[11px] text-slate-400">{user.specialty?.trim() || 'General Tele-Medicine'}</div>
                               </div>
                             </div>
                           </td>
@@ -784,10 +817,10 @@ export default function AdminMasterCommandCenterPage() {
                             <div className="flex items-center gap-2 font-mono text-[11px] text-slate-300">
                               <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                               <a
-                                href={doc.email && doc.email !== 'N/A' ? `mailto:${doc.email}` : '#'}
+                                href={user.email && user.email !== 'N/A' ? `mailto:${user.email}` : '#'}
                                 className="hover:text-teal-300 hover:underline"
                               >
-                                {doc.email?.trim() || 'No email provided'}
+                                {user.email?.trim() || 'No email provided'}
                               </a>
                             </div>
                           </td>
@@ -796,32 +829,35 @@ export default function AdminMasterCommandCenterPage() {
                           <td className="py-4 px-6">
                             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700/80 font-mono text-[11px]">
                               <FileBadge className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                              <span className={doc.licenseNumber && doc.licenseNumber.trim() ? 'text-teal-300' : 'text-slate-400 italic'}>
-                                {doc.licenseNumber && doc.licenseNumber.trim() ? doc.licenseNumber.trim() : 'Pending Submission'}
+                              <span className={user.licenseNumber && user.licenseNumber.trim() ? 'text-teal-300' : 'text-slate-400 italic'}>
+                                {user.licenseNumber && user.licenseNumber.trim() ? user.licenseNumber.trim() : 'Pending Submission'}
                               </span>
                             </div>
                           </td>
 
                           {/* Verification Status */}
                           <td className="py-4 px-6">
-                            {isVerified ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                user.isVerified === true
+                                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                  : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                              }`}
+                            >
+                              {user.isVerified === true ? (
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Verified</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                              ) : (
                                 <Clock className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Unverified</span>
-                              </span>
-                            )}
+                              )}
+                              <span>{user.isVerified === true ? 'Verified' : 'Unverified'}</span>
+                            </span>
                           </td>
 
                           {/* Action: Approve / Revoke Toggle */}
                           <td className="py-4 px-6 text-right">
-                            {isVerified ? (
+                            {user.isVerified === true ? (
                               <button
-                                onClick={() => handleToggleVerification(doc)}
+                                onClick={() => handleToggleVerification(user)}
                                 disabled={isActing}
                                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
                                 title="Revoke medical verification privileges"
@@ -835,7 +871,7 @@ export default function AdminMasterCommandCenterPage() {
                               </button>
                             ) : (
                               <button
-                                onClick={() => handleToggleVerification(doc)}
+                                onClick={() => handleToggleVerification(user)}
                                 disabled={isActing}
                                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-emerald-950/40 transition-all cursor-pointer disabled:opacity-50 border border-emerald-400/40"
                                 title="Approve medical license and grant practice clearance"
@@ -958,18 +994,19 @@ export default function AdminMasterCommandCenterPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
                     {filteredPatients.map((pt) => {
-                      const isActing = actionDoctorId === pt.id;
-                      // Fallback: If pt.isVerified is missing or undefined, strictly evaluate as false (Unverified)
-                      const isVerified = pt.isVerified === true;
-                      const hasHardware = pt.lastSyncedTemperature !== undefined || !!pt.deviceModel || !!pt.hardwareId;
+                      const user = pt;
+                      const isActing = actionDoctorId === user.id;
+                      // Fallback: If user.isVerified is missing or undefined, strictly evaluate as false (Unverified)
+                      const isVerified = user.isVerified === true;
+                      const hasHardware = user.lastSyncedTemperature !== undefined || !!user.deviceModel || !!user.hardwareId;
 
                       return (
-                        <tr key={pt.id} className="hover:bg-slate-800/40 transition-colors group">
+                        <tr key={user.id} className="hover:bg-slate-800/40 transition-colors group">
                           {/* Name */}
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-3">
                               <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center font-bold text-cyan-300 text-xs shrink-0">
-                                {(pt.fullName || 'Patient User')
+                                {(user.fullName || 'Patient User')
                                   .split(' ')
                                   .filter(Boolean)
                                   .map((n) => n[0])
@@ -979,15 +1016,15 @@ export default function AdminMasterCommandCenterPage() {
                               </div>
                               <div>
                                 <div className="font-semibold text-white text-xs group-hover:text-cyan-300 transition-colors flex items-center gap-1.5">
-                                  <span>{pt.fullName?.trim() || 'Patient User'}</span>
-                                  {pt.bloodGroup && pt.bloodGroup !== 'Not specified' && (
+                                  <span>{user.fullName?.trim() || 'Patient User'}</span>
+                                  {user.bloodGroup && user.bloodGroup !== 'Not specified' && (
                                     <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                                      {pt.bloodGroup}
+                                      {user.bloodGroup}
                                     </span>
                                   )}
                                 </div>
                                 <div className="text-[10px] text-slate-400 font-mono">
-                                  UID: {pt.id.slice(0, 10)}...
+                                  UID: {user.id.slice(0, 10)}...
                                 </div>
                               </div>
                             </div>
@@ -998,32 +1035,35 @@ export default function AdminMasterCommandCenterPage() {
                             <div className="flex items-center gap-2 font-mono text-[11px] text-slate-300">
                               <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                               <a
-                                href={pt.email && pt.email !== 'N/A' ? `mailto:${pt.email}` : '#'}
+                                href={user.email && user.email !== 'N/A' ? `mailto:${user.email}` : '#'}
                                 className="hover:text-cyan-300 hover:underline"
                               >
-                                {pt.email?.trim() || 'No email provided'}
+                                {user.email?.trim() || 'No email provided'}
                               </a>
                             </div>
                           </td>
 
                           {/* Verification Status (handle missing data: undefined/missing strictly evaluated as false) */}
                           <td className="py-4 px-6">
-                            {isVerified ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                user.isVerified === true
+                                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                  : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                              }`}
+                            >
+                              {user.isVerified === true ? (
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Verified</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                              ) : (
                                 <Clock className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Unverified</span>
-                              </span>
-                            )}
+                              )}
+                              <span>{user.isVerified === true ? 'Verified' : 'Unverified'}</span>
+                            </span>
                           </td>
 
                           {/* Medical Onboarding */}
                           <td className="py-4 px-6">
-                            {pt.hasCompletedOnboarding ? (
+                            {user.hasCompletedOnboarding ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                                 <span>Onboarded</span>
@@ -1042,10 +1082,10 @@ export default function AdminMasterCommandCenterPage() {
                               <div className="space-y-0.5">
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 border border-teal-500/40 text-[10px] font-mono font-bold">
                                   <Thermometer className="w-3 h-3 text-teal-400" />
-                                  <span>{pt.lastSyncedTemperature ? `${pt.lastSyncedTemperature.toFixed(1)}°C` : 'USB Stream'}</span>
+                                  <span>{user.lastSyncedTemperature ? `${user.lastSyncedTemperature.toFixed(1)}°C` : 'USB Stream'}</span>
                                 </span>
                                 <p className="text-[10px] text-slate-400 truncate max-w-[130px]">
-                                  {pt.deviceModel || 'USB Serial Sensor'}
+                                  {user.deviceModel || 'USB Serial Sensor'}
                                 </p>
                               </div>
                             ) : (
@@ -1059,9 +1099,9 @@ export default function AdminMasterCommandCenterPage() {
                           {/* Actions: Approve / Revoke Toggle & View Connected IoT Hardware ID Button */}
                           <td className="py-4 px-6 text-right">
                             <div className="inline-flex items-center justify-end gap-2">
-                              {isVerified ? (
+                              {user.isVerified === true ? (
                                 <button
-                                  onClick={() => handleToggleVerification(pt)}
+                                  onClick={() => handleToggleVerification(user)}
                                   disabled={isActing}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
                                   title="Revoke verification privileges"
@@ -1075,7 +1115,7 @@ export default function AdminMasterCommandCenterPage() {
                                 </button>
                               ) : (
                                 <button
-                                  onClick={() => handleToggleVerification(pt)}
+                                  onClick={() => handleToggleVerification(user)}
                                   disabled={isActing}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-emerald-950/40 transition-all cursor-pointer disabled:opacity-50 border border-emerald-400/40"
                                   title="Approve patient verification"

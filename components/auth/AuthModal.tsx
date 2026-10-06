@@ -8,7 +8,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithPopup,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import {
   X,
   Lock,
@@ -53,16 +53,17 @@ export function AuthModal({
     try {
       if (isSignUp) {
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
-        const enforcedRole: 'patient' | 'doctor' = role.toLowerCase() === 'doctor' ? 'doctor' : 'patient';
-        const profile: UserProfile = {
+        const accountType = role;
+        const profile: Record<string, unknown> = {
           uid: userCred.user.uid,
-          fullName: fullName || (enforcedRole === 'doctor' ? 'Dr. Clinician' : 'New Patient'),
+          fullName: fullName || (accountType.toLowerCase() === 'doctor' ? 'Dr. Clinician' : 'New Patient'),
           email: userCred.user.email || email,
-          role: enforcedRole,
-          specialty: enforcedRole === 'doctor' ? specialty : undefined,
-          licenseNumber: enforcedRole === 'doctor' ? `MD-TELE-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
+          role: accountType.toLowerCase(),
+          specialty: accountType.toLowerCase() === 'doctor' ? specialty : undefined,
+          licenseNumber: accountType.toLowerCase() === 'doctor' ? `MD-TELE-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
           isVerified: false,
-          hasCompletedOnboarding: enforcedRole === 'patient' ? false : true,
+          createdAt: serverTimestamp(),
+          hasCompletedOnboarding: accountType.toLowerCase() === 'patient' ? false : true,
         };
 
         try {
@@ -71,7 +72,7 @@ export function AuthModal({
           // If firestore offline, still proceed
         }
 
-        onSuccess(profile);
+        onSuccess(profile as unknown as UserProfile);
         onClose();
       } else {
         const userCred = await signInWithEmailAndPassword(auth, email, password);
@@ -120,16 +121,17 @@ export function AuthModal({
     setIsLoading(true);
     try {
       const userCred = await signInWithPopup(auth, googleProvider);
-      const enforcedRole: 'patient' | 'doctor' = role.toLowerCase() === 'doctor' ? 'doctor' : 'patient';
-      const profile: UserProfile = {
+      const accountType = role;
+      const profile: Record<string, unknown> = {
         uid: userCred.user.uid,
         fullName: userCred.user.displayName || 'Google Telehealth User',
         email: userCred.user.email || 'user@curalink.health',
-        role: enforcedRole,
-        specialty: enforcedRole === 'doctor' ? 'General Tele-Medicine' : undefined,
-        licenseNumber: enforcedRole === 'doctor' ? `MD-GOOG-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
+        role: accountType.toLowerCase(),
+        specialty: accountType.toLowerCase() === 'doctor' ? 'General Tele-Medicine' : undefined,
+        licenseNumber: accountType.toLowerCase() === 'doctor' ? `MD-GOOG-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
         isVerified: false,
-        hasCompletedOnboarding: enforcedRole === 'patient' ? false : true,
+        createdAt: serverTimestamp(),
+        hasCompletedOnboarding: accountType.toLowerCase() === 'patient' ? false : true,
       };
 
       try {
@@ -138,7 +140,7 @@ export function AuthModal({
         // Fallback
       }
 
-      onSuccess(profile);
+      onSuccess(profile as unknown as UserProfile);
       onClose();
     } catch (err: any) {
       if (err.code === 'auth/popup-closed-by-user') {

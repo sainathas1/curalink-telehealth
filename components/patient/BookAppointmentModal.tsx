@@ -23,6 +23,8 @@ import {
   Copy,
   Check,
   Lock,
+  UserX,
+  Search,
 } from 'lucide-react';
 
 export interface ClinicianOption {
@@ -57,6 +59,7 @@ export function BookAppointmentModal({
   // Clinicians from Firestore
   const [doctors, setDoctors] = useState<ClinicianOption[]>([]);
   const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Form selections
   const [specialtyFilter, setSpecialtyFilter] = useState<string>('All');
@@ -84,44 +87,70 @@ export function BookAppointmentModal({
   const [selectedBank, setSelectedBank] = useState('HDFC Bank');
   const [customUpi, setCustomUpi] = useState('');
 
-  // Fetch verified clinicians from Firestore
+  // Fetch verified clinicians strictly from Firestore (role == 'doctor' AND isVerified == true)
   useEffect(() => {
     if (!isOpen) return;
 
     async function fetchClinicians() {
       setIsLoadingDoctors(true);
       try {
-        const q = query(collection(db, 'users'), where('role', '==', 'Doctor'));
-        const snap = await getDocs(q);
         const docsList: ClinicianOption[] = [];
-        snap.forEach((docSnap) => {
-          const data = docSnap.data();
-          docsList.push({
-            id: docSnap.id,
-            name: data.fullName || data.name || 'Verified Clinician',
-            specialty: data.specialty || 'General Telehealth & Internal Medicine',
-            rating: data.rating || 5.0,
-            reviewsCount: data.reviewsCount || 1,
-            avatar: data.photoURL || data.avatar || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
-          });
-        });
+        const seenIds = new Set<string>();
 
-        // Fallback default on-call specialist if no doctor records registered yet in Firestore
-        if (docsList.length === 0) {
-          docsList.push({
-            id: 'oncall_telehealth_physician',
-            name: 'CuraLink On-Call Attending Physician',
-            specialty: 'Cardiology & Heart Rhythm',
-            rating: 4.9,
-            reviewsCount: 42,
-            avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
+        const appendVerifiedDoctors = (snapshot: any) => {
+          snapshot.forEach((docSnap: any) => {
+            if (seenIds.has(docSnap.id)) return;
+            const data = docSnap.data();
+            // Strict enforcement: strictly users where role == 'doctor' AND isVerified == true
+            // Unverified doctors must never be rendered in the patient UI
+            if (data.isVerified === true && data.role?.toLowerCase() === 'doctor') {
+              seenIds.add(docSnap.id);
+              docsList.push({
+                id: docSnap.id,
+                name: data.fullName || data.name || 'Verified Clinician',
+                specialty: data.specialty || 'General Telehealth & Internal Medicine',
+                rating: data.rating || 5.0,
+                reviewsCount: data.reviewsCount || 1,
+                avatar:
+                  data.photoURL ||
+                  data.avatar ||
+                  'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
+              });
+            }
           });
+        };
+
+        // 1. Strict Firestore query for role == 'doctor' AND isVerified == true
+        try {
+          const qLower = query(
+            collection(db, 'users'),
+            where('role', '==', 'doctor'),
+            where('isVerified', '==', true)
+          );
+          const snapLower = await getDocs(qLower);
+          appendVerifiedDoctors(snapLower);
+        } catch (err: any) {
+          console.warn('Doctor query (role: "doctor", isVerified: true) notice:', err?.message || err);
         }
 
+        // 2. Also query role == 'Doctor' in case of capitalized role values in legacy records
+        try {
+          const qUpper = query(
+            collection(db, 'users'),
+            where('role', '==', 'Doctor'),
+            where('isVerified', '==', true)
+          );
+          const snapUpper = await getDocs(qUpper);
+          appendVerifiedDoctors(snapUpper);
+        } catch (err: any) {
+          console.warn('Doctor query (role: "Doctor", isVerified: true) notice:', err?.message || err);
+        }
+
+        // Strict empty state handling: No mock/fake unverified fallback doctors!
         setDoctors(docsList);
-        setSelectedDoctorId((prev) => (prev && docsList.some((d) => d.id === prev) ? prev : docsList[0].id));
+        setSelectedDoctorId((prev) => (prev && docsList.some((d) => d.id === prev) ? prev : docsList[0]?.id || ''));
       } catch (err) {
-        console.error('Error fetching clinicians:', err);
+        console.error('Error fetching verified clinicians:', err);
       } finally {
         setIsLoadingDoctors(false);
       }
@@ -132,20 +161,26 @@ export function BookAppointmentModal({
 
   if (!isOpen) return null;
 
-  const specialties = ['All', 'Cardiology & Heart Rhythm', 'Pulmonology & Respiratory Care', 'General Internal Medicine', 'Neurology & Sleep Medicine'];
+  const specialties = [
+    'All',
+    'Cardiology & Heart Rhythm',
+    'Pulmonology & Respiratory Care',
+    'General Internal Medicine',
+    'Neurology & Sleep Medicine',
+  ];
 
-  const filteredDoctors = specialtyFilter === 'All'
-    ? doctors
-    : doctors.filter((d) => d.specialty === specialtyFilter);
+  const filteredDoctors = doctors.filter((d) => {
+    const matchesSpecialty = specialtyFilter === 'All' || d.specialty === specialtyFilter;
+    const matchesSearch =
+      !searchQuery.trim() ||
+      d.name.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
+      d.specialty.toLowerCase().includes(searchQuery.toLowerCase().trim());
+    return matchesSpecialty && matchesSearch;
+  });
 
-  const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId) || doctors[0] || {
-    id: 'oncall_telehealth_physician',
-    name: 'CuraLink On-Call Attending Physician',
-    specialty: 'Cardiology & Heart Rhythm',
-    rating: 4.9,
-    reviewsCount: 42,
-    avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
-  };
+  const selectedDoctor =
+    doctors.find((d) => d.id === selectedDoctorId) ||
+    (filteredDoctors.length > 0 ? filteredDoctors[0] : (doctors.length > 0 ? doctors[0] : null));
 
   // Dynamic Razorpay SDK loader
   const loadRazorpayScript = () => {
@@ -176,10 +211,10 @@ export function BookAppointmentModal({
         id: `apt_${Date.now()}`,
         patientId,
         patientName,
-        doctorId: selectedDoctor.id,
-        doctorName: selectedDoctor.name,
-        doctorSpecialty: selectedDoctor.specialty,
-        doctorAvatar: selectedDoctor.avatar,
+        doctorId: selectedDoctor?.id || '',
+        doctorName: selectedDoctor?.name || 'Verified Attending Physician',
+        doctorSpecialty: selectedDoctor?.specialty || 'General Telehealth & Internal Medicine',
+        doctorAvatar: selectedDoctor?.avatar || '',
         date,
         time: timeSlot,
         type: visitType,
@@ -221,7 +256,7 @@ export function BookAppointmentModal({
         amount: 50000,
         currency: 'INR',
         name: 'CuraLink Telehealth',
-        description: `Consultation Fee with ${selectedDoctor.name}`,
+        description: `Consultation Fee with ${selectedDoctor?.name || 'Verified Clinician'}`,
         order_id: orderData.orderId,
         handler: function (_response: any) {
           executePaymentSuccess('Razorpay');
@@ -262,6 +297,7 @@ export function BookAppointmentModal({
 
   const handleProceedToPayment = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedDoctor || filteredDoctors.length === 0) return;
     setStep('payment');
   };
 
@@ -309,11 +345,11 @@ export function BookAppointmentModal({
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 max-w-md mx-auto text-left text-xs space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Clinician:</span>
-                <strong className="text-slate-800">{selectedDoctor.name}</strong>
+                <strong className="text-slate-800">{selectedDoctor?.name || 'Verified Attending Physician'}</strong>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Specialty:</span>
-                <span className="text-teal-700 font-medium">{selectedDoctor.specialty}</span>
+                <span className="text-teal-700 font-medium">{selectedDoctor?.specialty || 'General Telehealth & Internal Medicine'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Scheduled Slot:</span>
@@ -338,8 +374,8 @@ export function BookAppointmentModal({
                   <Stethoscope className="w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-slate-900">{selectedDoctor.name}</h4>
-                  <p className="text-xs text-teal-700 font-medium">{selectedDoctor.specialty}</p>
+                  <h4 className="text-sm font-bold text-slate-900">{selectedDoctor?.name || 'Verified Attending Physician'}</h4>
+                  <p className="text-xs text-teal-700 font-medium">{selectedDoctor?.specialty || 'General Telehealth & Internal Medicine'}</p>
                   <p className="text-[11px] text-slate-500 mt-0.5">{date} • {timeSlot}</p>
                 </div>
               </div>
@@ -657,43 +693,100 @@ export function BookAppointmentModal({
 
             {/* Doctor Selection Cards */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                2. Select Clinician
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-1">
-                {filteredDoctors.map((doc) => {
-                  const isSelected = selectedDoctorId === doc.id;
-                  return (
-                    <div
-                      key={doc.id}
-                      onClick={() => setSelectedDoctorId(doc.id)}
-                      className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-3 ${
-                        isSelected
-                          ? 'border-teal-600 bg-teal-50/60 shadow-xs'
-                          : 'border-slate-200 hover:border-slate-300 bg-white'
-                      }`}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  2. Select Clinician
+                </label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search doctor by name..."
+                    className="pl-8 pr-6 py-1.5 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-teal-500 w-full sm:w-52 placeholder:text-slate-400 shadow-2xs"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
                     >
-                      <div className="w-12 h-12 rounded-xl bg-slate-200 overflow-hidden shrink-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={doc.avatar}
-                          alt={doc.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h5 className="text-xs font-bold text-slate-900 truncate">{doc.name}</h5>
-                        <p className="text-[11px] text-teal-700 truncate">{doc.specialty}</p>
-                        <div className="flex items-center gap-1 mt-0.5 text-[10px] text-slate-500">
-                          <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                          <span className="font-semibold text-slate-700">{doc.rating}</span>
-                          <span>({doc.reviewsCount})</span>
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {isLoadingDoctors ? (
+                <div className="p-8 rounded-2xl bg-slate-50 border border-slate-200/80 text-center flex flex-col items-center justify-center gap-2">
+                  <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs font-semibold text-slate-600">Querying verified clinicians...</span>
+                </div>
+              ) : filteredDoctors.length === 0 ? (
+                <div className="p-6 sm:p-8 rounded-2xl bg-slate-50 border border-slate-200/90 text-center flex flex-col items-center justify-center gap-2.5">
+                  <div className="w-11 h-11 rounded-2xl bg-teal-50 border border-teal-200/70 flex items-center justify-center text-teal-700">
+                    <UserX className="w-5 h-5 text-slate-500" />
+                  </div>
+                  <div className="space-y-1">
+                    <h5 className="text-xs sm:text-sm font-bold text-slate-800">
+                      No available clinicians at this time
+                    </h5>
+                    <p className="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
+                      {doctors.length === 0
+                        ? 'There are currently no verified clinicians active in the portal. Please check back later once clinician credentials are verified by administration.'
+                        : `No verified clinicians match "${searchQuery || specialtyFilter}". Try clearing your filters.`}
+                    </p>
+                  </div>
+                  {(specialtyFilter !== 'All' || searchQuery.trim() !== '') && doctors.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSpecialtyFilter('All');
+                        setSearchQuery('');
+                      }}
+                      className="mt-1 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-[11px] font-bold border border-teal-200 transition-colors cursor-pointer"
+                    >
+                      Reset Filters
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-1">
+                  {filteredDoctors.map((doc) => {
+                    const isSelected = selectedDoctorId === doc.id;
+                    return (
+                      <div
+                        key={doc.id}
+                        onClick={() => setSelectedDoctorId(doc.id)}
+                        className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-3 ${
+                          isSelected
+                            ? 'border-teal-600 bg-teal-50/60 shadow-xs'
+                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                        }`}
+                      >
+                        <div className="w-12 h-12 rounded-xl bg-slate-200 overflow-hidden shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={doc.avatar}
+                            alt={doc.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h5 className="text-xs font-bold text-slate-900 truncate">{doc.name}</h5>
+                          <p className="text-[11px] text-teal-700 truncate">{doc.specialty}</p>
+                          <div className="flex items-center gap-1 mt-0.5 text-[10px] text-slate-500">
+                            <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                            <span className="font-semibold text-slate-700">{doc.rating}</span>
+                            <span>({doc.reviewsCount})</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Visit Type, Date & Time */}
@@ -783,21 +876,31 @@ export function BookAppointmentModal({
             </div>
 
             {/* Footer Buttons */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <span>Proceed to Payment (₹500.00)</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-[11px] text-slate-500">
+                {!selectedDoctor && (
+                  <span className="text-amber-600 font-semibold flex items-center gap-1">
+                    * Please select an available verified clinician to continue.
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!selectedDoctor || isLoadingDoctors || filteredDoctors.length === 0}
+                  className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span>Proceed to Payment (₹500.00)</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </form>
         )}

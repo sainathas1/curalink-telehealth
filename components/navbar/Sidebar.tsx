@@ -45,7 +45,7 @@ export function Sidebar({
 }: SidebarProps) {
   const patientNavItems: { id: PatientTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-5 h-5" /> },
-    { id: 'vitals', label: 'IoT Vitals Monitor', icon: <Activity className="w-5 h-5" />, badge: 'Live' },
+    { id: 'vitals', label: 'IoT Vitals Monitor', icon: <Activity className="w-5 h-5" /> },
     { id: 'device', label: 'Connected Devices', icon: <LinkIcon className="w-5 h-5" />, badge: 'USB' },
     { id: 'appointments', label: 'Appointments', icon: <Calendar className="w-5 h-5" /> },
     { id: 'prescriptions', label: 'Prescriptions', icon: <Pill className="w-5 h-5" /> },

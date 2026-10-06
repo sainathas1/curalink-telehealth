@@ -395,10 +395,6 @@ export default function AdminMasterCommandCenterPage() {
                 <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30">
                   Doctor Verification Oversight
                 </span>
-                <span className="text-xs text-slate-300 flex items-center gap-1 font-mono">
-                  <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
-                  Live Sync
-                </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
                 Master Command Center

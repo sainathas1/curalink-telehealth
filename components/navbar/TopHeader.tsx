@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
 import { UserProfile, UserRole, LiveTelemetryPayload } from '../../lib/types';
 import {
   HeartPulse,
@@ -13,7 +12,6 @@ import {
   Bell,
   Cpu,
   ShieldCheck,
-  Video,
 } from 'lucide-react';
 
 interface TopHeaderProps {
@@ -128,15 +126,6 @@ export function TopHeader({
             )}
           </div>
 
-          {/* Quick Video Consultation Link */}
-          <Link
-            href="/video"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-all shadow-xs"
-            title="Open Dedicated Telehealth Video Room"
-          >
-            <Video className="w-3.5 h-3.5 text-teal-600" />
-            <span className="hidden sm:inline">Live Video</span>
-          </Link>
 
           {/* Alarm Notifications indicator */}
           {activeCriticalAlertsCount > 0 && (

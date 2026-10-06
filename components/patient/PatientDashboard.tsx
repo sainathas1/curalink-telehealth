@@ -118,7 +118,7 @@ export function PatientDashboard({
               className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md shadow-teal-900/50 transition-all cursor-pointer flex items-center gap-2"
             >
               <Activity className="w-4 h-4" />
-              <span>Inspect Live Vitals</span>
+              <span>Inspect Vitals</span>
             </button>
 
             <button

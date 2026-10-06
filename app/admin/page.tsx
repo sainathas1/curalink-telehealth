@@ -82,6 +82,20 @@ interface PatientUser {
   rawCreatedAt?: any;
 }
 
+interface TelemetryRecord {
+  id: string;
+  deviceId?: string;
+  patientId?: string;
+  heartRate?: number;
+  spo2?: number;
+  temperature?: number;
+  status?: string;
+  batteryLevel?: number;
+  sensorConnected?: boolean;
+  timestamp?: any;
+  [key: string]: any;
+}
+
 export default function AdminMasterCommandCenterPage() {
   const router = useRouter();
 
@@ -93,6 +107,7 @@ export default function AdminMasterCommandCenterPage() {
   // Firestore Real-Time Data State
   const [doctors, setDoctors] = useState<DoctorUser[]>([]);
   const [patients, setPatients] = useState<PatientUser[]>([]);
+  const [telemetry, setTelemetry] = useState<TelemetryRecord[]>([]);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
 
   // Search & Filtering State
@@ -127,14 +142,11 @@ export default function AdminMasterCommandCenterPage() {
     return () => unsubscribeAuth();
   }, [router]);
 
-  // 2. Real-Time Firestore Listener for Users Collection
+  // 2. Real-Time Firestore Listeners for Users and Telemetry Collections
   useEffect(() => {
     if (!isAuthorized) return;
 
     setDataLoading(true);
-    // Queries strictly matching the lowercase role casing: 'doctor' and 'patient'
-    const doctorsQuery = query(collection(db, 'users'), where('role', '==', 'doctor'));
-    const patientsQuery = query(collection(db, 'users'), where('role', '==', 'patient'));
 
     let doctorsLoaded = false;
     let patientsLoaded = false;
@@ -144,120 +156,170 @@ export default function AdminMasterCommandCenterPage() {
       }
     };
 
-    const unsubscribeDoctors = onSnapshot(
-      doctorsQuery,
-      (snapshot) => {
-        const docsList: DoctorUser[] = snapshot.docs.map((docSnap) => {
-          const data = docSnap.data();
-          // Data fallback: if isVerified is missing or undefined, strictly evaluate as false
-          const isVerified = data.isVerified === true;
-          return {
+    let unsubscribeDoctors = () => {};
+    let unsubscribePatients = () => {};
+    let unsubscribeTelemetry = () => {};
+
+    // -------------------------------------------------------------
+    // 1. Doctors Data Fetch (using collection(db, 'users'), NOT doc())
+    // -------------------------------------------------------------
+    try {
+      const doctorsQuery = query(collection(db, 'users'), where('role', '==', 'doctor'));
+      unsubscribeDoctors = onSnapshot(
+        doctorsQuery,
+        (snapshot) => {
+          const docsList: DoctorUser[] = snapshot.docs.map((docSnap) => {
+            const data = docSnap.data();
+            // Data fallback: if isVerified is missing or undefined, strictly evaluate as false
+            const isVerified = data.isVerified === true;
+            return {
+              id: docSnap.id,
+              uid: data.uid || docSnap.id,
+              fullName: (data.fullName || data.name || data.displayName || 'Dr. Clinician').trim(),
+              email: (data.email || 'N/A').trim(),
+              licenseNumber: (data.licenseNumber || data.medicalLicense || '').trim(),
+              specialty: (data.specialty || 'General Tele-Medicine').trim(),
+              role: data.role || 'doctor',
+              isVerified: isVerified,
+              verifiedAt: data.verifiedAt,
+              createdAt: data.createdAt
+                ? typeof data.createdAt === 'string'
+                  ? data.createdAt
+                  : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
+                : 'Recent',
+              rawCreatedAt: data.createdAt,
+            };
+          });
+
+          // Sort by date in frontend JavaScript using .sort()
+          docsList.sort((a, b) => {
+            const parseTime = (val: any): number => {
+              if (!val) return 0;
+              if (typeof val?.toMillis === 'function') return val.toMillis();
+              if (typeof val?.toDate === 'function') return val.toDate().getTime();
+              if (typeof val === 'number') return val;
+              const t = new Date(val).getTime();
+              return isNaN(t) ? 0 : t;
+            };
+            return parseTime(b.rawCreatedAt) - parseTime(a.rawCreatedAt);
+          });
+
+          setDoctors(docsList);
+          doctorsLoaded = true;
+          checkLoadingDone();
+        },
+        (error) => {
+          console.error('Error fetching doctors in Master Command Center:', error);
+          doctorsLoaded = true;
+          checkLoadingDone();
+        }
+      );
+    } catch (error) {
+      console.error('Exception setting up doctors fetch in Master Command Center:', error);
+      doctorsLoaded = true;
+      checkLoadingDone();
+    }
+
+    // -------------------------------------------------------------
+    // 2. Patients Data Fetch (using collection(db, 'users'), NOT doc())
+    // -------------------------------------------------------------
+    try {
+      const patientsQuery = query(collection(db, 'users'), where('role', '==', 'patient'));
+      unsubscribePatients = onSnapshot(
+        patientsQuery,
+        (snapshot) => {
+          const patsList: PatientUser[] = snapshot.docs.map((docSnap) => {
+            const data = docSnap.data();
+            // Data fallback: if isVerified is missing or undefined, strictly evaluate as false
+            const isVerified = data.isVerified === true;
+            const hasHardware = data.lastSyncedTemperature !== undefined || !!data.deviceModel || !!data.hardwareId;
+            const deterministicHardwareId = data.hardwareId || (hasHardware ? `USB-IOT-${docSnap.id.slice(0, 8).toUpperCase()}` : undefined);
+
+            return {
+              id: docSnap.id,
+              uid: data.uid || docSnap.id,
+              fullName: (data.fullName || data.name || data.displayName || 'Patient User').trim(),
+              email: (data.email || 'N/A').trim(),
+              role: data.role || 'patient',
+              isVerified: isVerified,
+              hasCompletedOnboarding: data.hasCompletedOnboarding === true,
+              bloodGroup: data.bloodGroup,
+              knownAllergies: data.knownAllergies,
+              chronicConditions: data.chronicConditions,
+              currentMedications: data.currentMedications,
+              isDeactivated: data.isDeactivated === true,
+              lastSyncedTemperature: data.lastSyncedTemperature,
+              lastSyncedAt: data.lastSyncedAt,
+              temperatureStatus: data.temperatureStatus,
+              deviceModel: data.deviceModel,
+              hardwareId: deterministicHardwareId,
+              createdAt: data.createdAt
+                ? typeof data.createdAt === 'string'
+                  ? data.createdAt
+                  : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
+                : 'Recent',
+              rawCreatedAt: data.createdAt,
+            };
+          });
+
+          // Sort by date in frontend JavaScript using .sort()
+          patsList.sort((a, b) => {
+            const parseTime = (val: any): number => {
+              if (!val) return 0;
+              if (typeof val?.toMillis === 'function') return val.toMillis();
+              if (typeof val?.toDate === 'function') return val.toDate().getTime();
+              if (typeof val === 'number') return val;
+              const t = new Date(val).getTime();
+              return isNaN(t) ? 0 : t;
+            };
+            return parseTime(b.rawCreatedAt) - parseTime(a.rawCreatedAt);
+          });
+
+          setPatients(patsList);
+          patientsLoaded = true;
+          checkLoadingDone();
+        },
+        (error) => {
+          console.error('Error fetching patients in Master Command Center:', error);
+          patientsLoaded = true;
+          checkLoadingDone();
+        }
+      );
+    } catch (error) {
+      console.error('Exception setting up patients fetch in Master Command Center:', error);
+      patientsLoaded = true;
+      checkLoadingDone();
+    }
+
+    // -------------------------------------------------------------
+    // 3. Telemetry Data Fetch (using collection(db, 'telemetry'), NOT doc())
+    // Independent try/catch: Failure will NOT prevent patients or doctors from loading
+    // -------------------------------------------------------------
+    try {
+      const telemetryCollection = collection(db, 'telemetry');
+      unsubscribeTelemetry = onSnapshot(
+        telemetryCollection,
+        (snapshot) => {
+          const telemetryList: TelemetryRecord[] = snapshot.docs.map((docSnap) => ({
             id: docSnap.id,
-            uid: data.uid || docSnap.id,
-            fullName: (data.fullName || data.name || data.displayName || 'Dr. Clinician').trim(),
-            email: (data.email || 'N/A').trim(),
-            licenseNumber: (data.licenseNumber || data.medicalLicense || '').trim(),
-            specialty: (data.specialty || 'General Tele-Medicine').trim(),
-            role: data.role || 'doctor',
-            isVerified: isVerified,
-            verifiedAt: data.verifiedAt,
-            createdAt: data.createdAt
-              ? typeof data.createdAt === 'string'
-                ? data.createdAt
-                : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
-              : 'Recent',
-            rawCreatedAt: data.createdAt,
-          };
-        });
-
-        // Sort by date in frontend JavaScript using .sort()
-        docsList.sort((a, b) => {
-          const parseTime = (val: any): number => {
-            if (!val) return 0;
-            if (typeof val?.toMillis === 'function') return val.toMillis();
-            if (typeof val?.toDate === 'function') return val.toDate().getTime();
-            if (typeof val === 'number') return val;
-            const t = new Date(val).getTime();
-            return isNaN(t) ? 0 : t;
-          };
-          return parseTime(b.rawCreatedAt) - parseTime(a.rawCreatedAt);
-        });
-
-        setDoctors(docsList);
-        doctorsLoaded = true;
-        checkLoadingDone();
-      },
-      (error) => {
-        console.error('Error fetching doctors in Master Command Center:', error);
-        doctorsLoaded = true;
-        checkLoadingDone();
-      }
-    );
-
-    const unsubscribePatients = onSnapshot(
-      patientsQuery,
-      (snapshot) => {
-        const patsList: PatientUser[] = snapshot.docs.map((docSnap) => {
-          const data = docSnap.data();
-          // Data fallback: if isVerified is missing or undefined, strictly evaluate as false
-          const isVerified = data.isVerified === true;
-          const hasHardware = data.lastSyncedTemperature !== undefined || !!data.deviceModel || !!data.hardwareId;
-          const deterministicHardwareId = data.hardwareId || (hasHardware ? `USB-IOT-${docSnap.id.slice(0, 8).toUpperCase()}` : undefined);
-
-          return {
-            id: docSnap.id,
-            uid: data.uid || docSnap.id,
-            fullName: (data.fullName || data.name || data.displayName || 'Patient User').trim(),
-            email: (data.email || 'N/A').trim(),
-            role: data.role || 'patient',
-            isVerified: isVerified,
-            hasCompletedOnboarding: data.hasCompletedOnboarding === true,
-            bloodGroup: data.bloodGroup,
-            knownAllergies: data.knownAllergies,
-            chronicConditions: data.chronicConditions,
-            currentMedications: data.currentMedications,
-            isDeactivated: data.isDeactivated === true,
-            lastSyncedTemperature: data.lastSyncedTemperature,
-            lastSyncedAt: data.lastSyncedAt,
-            temperatureStatus: data.temperatureStatus,
-            deviceModel: data.deviceModel,
-            hardwareId: deterministicHardwareId,
-            createdAt: data.createdAt
-              ? typeof data.createdAt === 'string'
-                ? data.createdAt
-                : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
-              : 'Recent',
-            rawCreatedAt: data.createdAt,
-          };
-        });
-
-        // Sort by date in frontend JavaScript using .sort()
-        patsList.sort((a, b) => {
-          const parseTime = (val: any): number => {
-            if (!val) return 0;
-            if (typeof val?.toMillis === 'function') return val.toMillis();
-            if (typeof val?.toDate === 'function') return val.toDate().getTime();
-            if (typeof val === 'number') return val;
-            const t = new Date(val).getTime();
-            return isNaN(t) ? 0 : t;
-          };
-          return parseTime(b.rawCreatedAt) - parseTime(a.rawCreatedAt);
-        });
-
-        setPatients(patsList);
-        patientsLoaded = true;
-        checkLoadingDone();
-      },
-      (error) => {
-        console.error('Error fetching patients in Master Command Center:', error);
-        patientsLoaded = true;
-        checkLoadingDone();
-      }
-    );
+            ...docSnap.data(),
+          }));
+          setTelemetry(telemetryList);
+        },
+        (error) => {
+          // Independent failure handling: warning logged, does NOT prevent patients and doctors from loading
+          console.warn('Notice: Telemetry collection fetch notice (non-fatal):', error.message || error);
+        }
+      );
+    } catch (error) {
+      // Independent catch: if collection reference or snapshot throws, catch safely
+      console.warn('Notice: Exception initializing telemetry fetch (non-fatal):', error);
+    }
 
     return () => {
-      unsubscribeDoctors();
-      unsubscribePatients();
+      try { unsubscribeDoctors(); } catch {}
+      try { unsubscribePatients(); } catch {}
+      try { unsubscribeTelemetry(); } catch {}
     };
   }, [isAuthorized]);
 
@@ -375,9 +437,12 @@ export default function AdminMasterCommandCenterPage() {
   // Top Metrics Calculation
   const totalPatientsCount = patients.length;
   const totalDoctorsCount = doctors.length;
-  const hardwareDeployedCount = patients.filter(
-    (p) => p.lastSyncedTemperature !== undefined || !!p.deviceModel || !!p.hardwareId
-  ).length;
+  const hardwareDeployedCount = Math.max(
+    patients.filter(
+      (p) => p.lastSyncedTemperature !== undefined || !!p.deviceModel || !!p.hardwareId
+    ).length,
+    telemetry.length
+  );
 
   // Loading Screen
   if (authLoading) {

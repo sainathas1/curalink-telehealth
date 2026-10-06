@@ -96,11 +96,16 @@ export function subscribeToFirebaseTelemetry(
   patientId: string,
   onData: (payload: LiveTelemetryPayload) => void
 ): () => void {
+  // Validate patientId: empty string or missing ID causes 'Invalid document reference' (odd number of segments)
+  if (!patientId || typeof patientId !== 'string' || !patientId.trim()) {
+    return () => {};
+  }
+
   const unsubscribers: (() => void)[] = [];
 
   // 1. Subscribe to Firestore
   try {
-    const docRef = doc(db, 'telemetry', patientId);
+    const docRef = doc(db, 'telemetry', patientId.trim());
     const unsubFirestore = onSnapshot(
       docRef,
       (snapshot) => {
@@ -251,8 +256,11 @@ export function createHardwareStreamSimulator(
  * Pushes hardware payload to Firestore
  */
 export async function pushHardwarePayload(payload: Partial<LiveTelemetryPayload> & { patientId: string }) {
+  if (!payload?.patientId || typeof payload.patientId !== 'string' || !payload.patientId.trim()) {
+    return false;
+  }
   try {
-    const docRef = doc(db, 'telemetry', payload.patientId);
+    const docRef = doc(db, 'telemetry', payload.patientId.trim());
     await setDoc(
       docRef,
       {

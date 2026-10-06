@@ -109,11 +109,105 @@ export function DoctorDashboard({
     };
   }, [selectedPatient?.id]);
 
+  // Real-time Firestore fetch for doctor's isVerified status
+  const [isVerified, setIsVerified] = useState<boolean | undefined>(doctor?.isVerified);
+
+  useEffect(() => {
+    if (!doctor?.uid) return;
+
+    try {
+      const userDocRef = doc(db, 'users', doctor.uid);
+      const unsubscribe = onSnapshot(
+        userDocRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            setIsVerified(data.isVerified === true);
+          } else {
+            setIsVerified(false);
+          }
+        },
+        (error) => {
+          console.warn('Doctor verification status listener notice:', error);
+        }
+      );
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('Error subscribing to doctor verification status:', err);
+    }
+  }, [doctor?.uid]);
+
+  useEffect(() => {
+    if (doctor?.isVerified !== undefined) {
+      setIsVerified(doctor.isVerified);
+    }
+  }, [doctor?.isVerified]);
+
   const criticalCount = patients.filter((p) => p.status === 'Critical').length;
   const nextVisit = appointmentsQueue[0];
 
   return (
     <div className="space-y-6">
+      {/* ------------------------------------------------------------- */}
+      {/* CLINICIAN CREDENTIAL VERIFICATION STATUS BANNER / BADGE       */}
+      {/* ------------------------------------------------------------- */}
+      {isVerified === true ? (
+        /* GREEN 'Status: Verified' BADGE / BANNER */
+        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md shadow-emerald-950/20 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-sm text-white">Status: Verified</span>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-mono">
+                  Active Clinician
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Your medical license credentials have been reviewed and approved by the Super Administrator. Full telehealth consultations and digital prescriptions are active.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 font-mono text-xs font-bold border border-emerald-500/40 shadow-xs">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              Verified License: {doctor?.licenseNumber || 'Active MD'}
+            </span>
+          </div>
+        </div>
+      ) : (
+        /* YELLOW 'Status: Unverified - Pending Admin Approval' WARNING BANNER */
+        <div className="bg-amber-500/15 border-2 border-amber-500/40 text-amber-200 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg shadow-amber-950/20 animate-in fade-in duration-200">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+              <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+            </div>
+            <div className="space-y-0.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-black text-sm sm:text-base text-amber-300">
+                  Status: Unverified - Pending Admin Approval
+                </span>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/25 text-amber-300 border border-amber-500/40 font-mono">
+                  Pending Review
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                Your medical license and clinician account are currently under administrative review by the Super Administrator. You will receive active consultation privileges once credentials are verified.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900/90 text-amber-400 font-mono text-xs font-bold border border-amber-500/40 shadow-xs">
+              <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              Awaiting Admin Approval
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Clinician Welcome Hero */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-teal-950 text-white p-6 sm:p-8 rounded-3xl shadow-lg border border-slate-700/60 relative overflow-hidden">
         <div className="absolute -top-12 -right-12 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />

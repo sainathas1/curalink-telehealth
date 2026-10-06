@@ -1,14 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React from 'react';
+import DoctorDashboardRoute from './dashboard/page';
 
 export default function DoctorIndexPage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace('/doctor/dashboard');
-  }, [router]);
-
-  return null;
+  return <DoctorDashboardRoute />;
 }

@@ -5,10 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ShieldCheck,
-  ShieldAlert,
-  Users,
   Stethoscope,
-  Cpu,
   Mail,
   FileBadge,
   Search,
@@ -19,18 +16,11 @@ import {
   RefreshCw,
   Clock,
   CheckCircle2,
-  AlertTriangle,
-  Radio,
-  Thermometer,
-  HardDrive,
-  Copy,
-  ChevronRight,
   PlusCircle,
   Activity,
-  Layers,
-  HelpCircle,
-  SlidersHorizontal,
   Home,
+  UserCheck,
+  UserX,
 } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
@@ -60,42 +50,6 @@ interface DoctorUser {
   rawCreatedAt?: any;
 }
 
-interface PatientUser {
-  id: string;
-  uid: string;
-  fullName: string;
-  email: string;
-  role: string;
-  isVerified?: boolean;
-  hasCompletedOnboarding: boolean;
-  bloodGroup?: string;
-  knownAllergies?: string;
-  chronicConditions?: string[];
-  currentMedications?: string;
-  isDeactivated?: boolean;
-  lastSyncedTemperature?: number;
-  lastSyncedAt?: string;
-  temperatureStatus?: string;
-  deviceModel?: string;
-  hardwareId?: string;
-  createdAt?: string;
-  rawCreatedAt?: any;
-}
-
-interface TelemetryRecord {
-  id: string;
-  deviceId?: string;
-  patientId?: string;
-  heartRate?: number;
-  spo2?: number;
-  temperature?: number;
-  status?: string;
-  batteryLevel?: number;
-  sensorConnected?: boolean;
-  timestamp?: any;
-  [key: string]: any;
-}
-
 export default function AdminMasterCommandCenterPage() {
   const router = useRouter();
 
@@ -104,25 +58,18 @@ export default function AdminMasterCommandCenterPage() {
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
 
-  // Firestore Real-Time Data State
+  // Firestore Real-Time Data State: ONLY Doctors
   const [doctors, setDoctors] = useState<DoctorUser[]>([]);
-  const [patients, setPatients] = useState<PatientUser[]>([]);
-  const [telemetry, setTelemetry] = useState<TelemetryRecord[]>([]);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
 
   // Search & Filtering State
   const [doctorSearch, setDoctorSearch] = useState<string>('');
   const [doctorFilter, setDoctorFilter] = useState<'all' | 'verified' | 'pending'>('all');
-  const [patientSearch, setPatientSearch] = useState<string>('');
-  const [patientFilter, setPatientFilter] = useState<'all' | 'connected' | 'onboarded'>('all');
 
   // Interactive States
   const [actionDoctorId, setActionDoctorId] = useState<string | null>(null);
-  const [selectedPatientForHardware, setSelectedPatientForHardware] = useState<PatientUser | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
-  const [copiedHardwareId, setCopiedHardwareId] = useState<boolean>(false);
   const [isSeedingDemo, setIsSeedingDemo] = useState<boolean>(false);
-  const [activeNavSection, setActiveNavSection] = useState<'overview' | 'doctors' | 'patients'>('overview');
 
   // 1. Strict Authentication & Security Check
   useEffect(() => {
@@ -132,7 +79,6 @@ export default function AdminMasterCommandCenterPage() {
 
       if (!user || user.email?.trim().toLowerCase() !== AUTHORIZED_ADMIN_EMAIL.toLowerCase()) {
         setIsAuthorized(false);
-        // Requirement: If no user logged in, or if email is NOT sainathas8788@gmail.com, immediately redirect to /
         router.replace('/');
       } else {
         setIsAuthorized(true);
@@ -142,27 +88,14 @@ export default function AdminMasterCommandCenterPage() {
     return () => unsubscribeAuth();
   }, [router]);
 
-  // 2. Real-Time Firestore Listeners for Users and Telemetry Collections
+  // 2. Real-Time Firestore Listener: ONLY role == 'doctor'
   useEffect(() => {
     if (!isAuthorized) return;
 
     setDataLoading(true);
 
-    let doctorsLoaded = false;
-    let patientsLoaded = false;
-    const checkLoadingDone = () => {
-      if (doctorsLoaded && patientsLoaded) {
-        setDataLoading(false);
-      }
-    };
-
     let unsubscribeDoctors = () => {};
-    let unsubscribePatients = () => {};
-    let unsubscribeTelemetry = () => {};
 
-    // -------------------------------------------------------------
-    // 1. Doctors Data Fetch (using collection(db, 'users'), NOT doc())
-    // -------------------------------------------------------------
     try {
       const doctorsQuery = query(collection(db, 'users'), where('role', '==', 'doctor'));
       unsubscribeDoctors = onSnapshot(
@@ -170,7 +103,6 @@ export default function AdminMasterCommandCenterPage() {
         (snapshot) => {
           const docsList: DoctorUser[] = snapshot.docs.map((docSnap) => {
             const data = docSnap.data();
-            // Data fallback: if isVerified is missing or undefined, strictly evaluate as false
             const isVerified = data.isVerified === true;
             return {
               id: docSnap.id,
@@ -191,7 +123,7 @@ export default function AdminMasterCommandCenterPage() {
             };
           });
 
-          // Sort by date in frontend JavaScript using .sort()
+          // Sort by creation date descending
           docsList.sort((a, b) => {
             const parseTime = (val: any): number => {
               if (!val) return 0;
@@ -205,132 +137,30 @@ export default function AdminMasterCommandCenterPage() {
           });
 
           setDoctors(docsList);
-          doctorsLoaded = true;
-          checkLoadingDone();
+          setDataLoading(false);
         },
         (error) => {
           console.error('Error fetching doctors in Master Command Center:', error);
-          doctorsLoaded = true;
-          checkLoadingDone();
+          setDataLoading(false);
         }
       );
     } catch (error) {
       console.error('Exception setting up doctors fetch in Master Command Center:', error);
-      doctorsLoaded = true;
-      checkLoadingDone();
-    }
-
-    // -------------------------------------------------------------
-    // 2. Patients Data Fetch (using collection(db, 'users'), NOT doc())
-    // -------------------------------------------------------------
-    try {
-      const patientsQuery = query(collection(db, 'users'), where('role', '==', 'patient'));
-      unsubscribePatients = onSnapshot(
-        patientsQuery,
-        (snapshot) => {
-          const patsList: PatientUser[] = snapshot.docs.map((docSnap) => {
-            const data = docSnap.data();
-            // Data fallback: if isVerified is missing or undefined, strictly evaluate as false
-            const isVerified = data.isVerified === true;
-            const hasHardware = data.lastSyncedTemperature !== undefined || !!data.deviceModel || !!data.hardwareId;
-            const deterministicHardwareId = data.hardwareId || (hasHardware ? `USB-IOT-${docSnap.id.slice(0, 8).toUpperCase()}` : undefined);
-
-            return {
-              id: docSnap.id,
-              uid: data.uid || docSnap.id,
-              fullName: (data.fullName || data.name || data.displayName || 'Patient User').trim(),
-              email: (data.email || 'N/A').trim(),
-              role: data.role || 'patient',
-              isVerified: isVerified,
-              hasCompletedOnboarding: data.hasCompletedOnboarding === true,
-              bloodGroup: data.bloodGroup,
-              knownAllergies: data.knownAllergies,
-              chronicConditions: data.chronicConditions,
-              currentMedications: data.currentMedications,
-              isDeactivated: data.isDeactivated === true,
-              lastSyncedTemperature: data.lastSyncedTemperature,
-              lastSyncedAt: data.lastSyncedAt,
-              temperatureStatus: data.temperatureStatus,
-              deviceModel: data.deviceModel,
-              hardwareId: deterministicHardwareId,
-              createdAt: data.createdAt
-                ? typeof data.createdAt === 'string'
-                  ? data.createdAt
-                  : data.createdAt?.toDate?.()?.toLocaleDateString?.() || 'Recent'
-                : 'Recent',
-              rawCreatedAt: data.createdAt,
-            };
-          });
-
-          // Sort by date in frontend JavaScript using .sort()
-          patsList.sort((a, b) => {
-            const parseTime = (val: any): number => {
-              if (!val) return 0;
-              if (typeof val?.toMillis === 'function') return val.toMillis();
-              if (typeof val?.toDate === 'function') return val.toDate().getTime();
-              if (typeof val === 'number') return val;
-              const t = new Date(val).getTime();
-              return isNaN(t) ? 0 : t;
-            };
-            return parseTime(b.rawCreatedAt) - parseTime(a.rawCreatedAt);
-          });
-
-          setPatients(patsList);
-          patientsLoaded = true;
-          checkLoadingDone();
-        },
-        (error) => {
-          console.error('Error fetching patients in Master Command Center:', error);
-          patientsLoaded = true;
-          checkLoadingDone();
-        }
-      );
-    } catch (error) {
-      console.error('Exception setting up patients fetch in Master Command Center:', error);
-      patientsLoaded = true;
-      checkLoadingDone();
-    }
-
-    // -------------------------------------------------------------
-    // 3. Telemetry Data Fetch (using collection(db, 'telemetry'), NOT doc())
-    // Independent try/catch: Failure will NOT prevent patients or doctors from loading
-    // -------------------------------------------------------------
-    try {
-      const telemetryCollection = collection(db, 'telemetry');
-      unsubscribeTelemetry = onSnapshot(
-        telemetryCollection,
-        (snapshot) => {
-          const telemetryList: TelemetryRecord[] = snapshot.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...docSnap.data(),
-          }));
-          setTelemetry(telemetryList);
-        },
-        (error) => {
-          // Independent failure handling: warning logged, does NOT prevent patients and doctors from loading
-          console.warn('Notice: Telemetry collection fetch notice (non-fatal):', error.message || error);
-        }
-      );
-    } catch (error) {
-      // Independent catch: if collection reference or snapshot throws, catch safely
-      console.warn('Notice: Exception initializing telemetry fetch (non-fatal):', error);
+      setDataLoading(false);
     }
 
     return () => {
-      try { unsubscribeDoctors(); } catch {}
-      try { unsubscribePatients(); } catch {}
-      try { unsubscribeTelemetry(); } catch {}
+      try {
+        unsubscribeDoctors();
+      } catch {}
     };
   }, [isAuthorized]);
 
-
-
-  // User Verification Action (Approve / Revoke Toggle)
-  const handleToggleVerification = async (user: DoctorUser | PatientUser) => {
+  // Doctor Verification Action (Approve / Revoke Toggle)
+  const handleToggleVerification = async (user: DoctorUser) => {
     if (actionDoctorId) return;
     setActionDoctorId(user.id);
 
-    // Fallback: If isVerified is missing or undefined, strictly evaluate as false (so toggle sets to true)
     const isCurrentlyVerified = user.isVerified === true;
     const newVerifiedState = !isCurrentlyVerified;
 
@@ -342,11 +172,10 @@ export default function AdminMasterCommandCenterPage() {
         verifiedBy: currentUser?.email || AUTHORIZED_ADMIN_EMAIL,
       });
 
-      const rolePrefix = user.role?.toLowerCase() === 'doctor' ? 'Dr. ' : 'Patient ';
       setSuccessToast(
         newVerifiedState
-          ? `Privileges Granted: ${rolePrefix}${user.fullName || 'User'} is now verified.`
-          : `Privileges Revoked: ${rolePrefix}${user.fullName || 'User'} set to unverified status.`
+          ? `Privileges Granted: Dr. ${user.fullName || 'Clinician'} is now verified.`
+          : `Privileges Revoked: Dr. ${user.fullName || 'Clinician'} set to unverified status.`
       );
       setTimeout(() => setSuccessToast(null), 4000);
     } catch (err: any) {
@@ -357,7 +186,7 @@ export default function AdminMasterCommandCenterPage() {
     }
   };
 
-  // Seed demo clinician or patient for quick demonstration
+  // Seed demo clinician for quick testing
   const handleSeedDemoDoctor = async () => {
     setIsSeedingDemo(true);
     try {
@@ -390,12 +219,6 @@ export default function AdminMasterCommandCenterPage() {
     router.push('/auth');
   };
 
-  const handleCopyHardwareId = (id: string) => {
-    navigator.clipboard.writeText(id);
-    setCopiedHardwareId(true);
-    setTimeout(() => setCopiedHardwareId(false), 2000);
-  };
-
   // Filtered Doctors
   const filteredDoctors = doctors.filter((doc) => {
     if (doctorFilter === 'verified' && !doc.isVerified) return false;
@@ -415,34 +238,10 @@ export default function AdminMasterCommandCenterPage() {
     );
   });
 
-  // Filtered Patients
-  const filteredPatients = patients.filter((pt) => {
-    if (patientFilter === 'connected' && !pt.hardwareId && pt.lastSyncedTemperature === undefined) return false;
-    if (patientFilter === 'onboarded' && !pt.hasCompletedOnboarding) return false;
-
-    const q = patientSearch.toLowerCase().trim();
-    if (!q) return true;
-    const fullName = (pt.fullName || '').toLowerCase();
-    const email = (pt.email || '').toLowerCase();
-    const deviceModel = (pt.deviceModel || '').toLowerCase();
-    const hardwareId = (pt.hardwareId || '').toLowerCase();
-    return (
-      fullName.includes(q) ||
-      email.includes(q) ||
-      deviceModel.includes(q) ||
-      hardwareId.includes(q)
-    );
-  });
-
-  // Top Metrics Calculation
-  const totalPatientsCount = patients.length;
+  // Clinician Metrics
   const totalDoctorsCount = doctors.length;
-  const hardwareDeployedCount = Math.max(
-    patients.filter(
-      (p) => p.lastSyncedTemperature !== undefined || !!p.deviceModel || !!p.hardwareId
-    ).length,
-    telemetry.length
-  );
+  const verifiedDoctorsCount = doctors.filter((d) => d.isVerified).length;
+  const pendingDoctorsCount = doctors.filter((d) => !d.isVerified).length;
 
   // Loading Screen
   if (authLoading) {
@@ -465,34 +264,49 @@ export default function AdminMasterCommandCenterPage() {
     );
   }
 
-  // Unauthorized Gate (Redirecting to /)
+  // Unauthorized Screen
   if (!isAuthorized) {
-    return null;
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-slate-900 border border-rose-500/30 p-8 rounded-3xl shadow-2xl max-w-md w-full space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mx-auto">
+            <ShieldCheck className="w-8 h-8 text-rose-500" />
+          </div>
+          <h2 className="text-xl font-bold tracking-tight text-white">Administrative Access Restricted</h2>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Only designated root administrators (<span className="text-teal-400 font-mono">{AUTHORIZED_ADMIN_EMAIL}</span>) are granted access.
+          </p>
+          <button
+            onClick={() => router.push('/')}
+            className="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition-all shadow-lg shadow-teal-600/20 cursor-pointer"
+          >
+            Return to Public Portal
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row font-sans selection:bg-teal-500 selection:text-white">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row antialiased selection:bg-teal-500 selection:text-white">
       {/* ------------------------------------------------------------- */}
       {/* SIDEBAR NAVIGATION                                            */}
       {/* ------------------------------------------------------------- */}
-      <aside className="w-full md:w-64 bg-slate-900/95 border-b md:border-b-0 md:border-r border-slate-800/80 flex flex-col justify-between shrink-0 md:min-h-screen sticky top-0 z-30 backdrop-blur-md">
+      <aside className="w-full md:w-64 bg-slate-900/90 border-r border-slate-800 flex flex-col justify-between shrink-0 backdrop-blur-md">
         <div>
-          {/* Brand & Portal Header */}
-          <div className="p-5 border-b border-slate-800/80 flex items-center justify-between">
+          {/* Brand Header */}
+          <div className="p-6 border-b border-slate-800/80 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-400 shadow-sm">
-                <ShieldCheck className="w-5 h-5 text-teal-400" />
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-teal-500 to-emerald-400 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-teal-500/20">
+                <ShieldCheck className="w-6 h-6 stroke-[2.5]" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-black text-base tracking-tight text-white">
-                    Cura<span className="text-teal-400">Link</span>
-                  </span>
-                  <span className="text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                    Master
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400 font-medium">Command Center</p>
+                <span className="font-black text-sm tracking-tight text-white block">
+                  Cura<span className="text-teal-400">Link</span>
+                </span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-teal-400 block font-bold">
+                  Admin Command
+                </span>
               </div>
             </div>
           </div>
@@ -500,30 +314,16 @@ export default function AdminMasterCommandCenterPage() {
           {/* Navigation Links */}
           <nav className="p-4 space-y-1.5 text-xs font-semibold">
             <button
-              onClick={() => {
-                setActiveNavSection('overview');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
-                activeNavSection === 'overview'
-                  ? 'bg-teal-600 text-white shadow-md shadow-teal-950/40'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl bg-teal-600 text-white shadow-md shadow-teal-950/40 transition-all cursor-pointer"
             >
               <Activity className="w-4 h-4" />
               <span>Platform Overview</span>
             </button>
 
             <button
-              onClick={() => {
-                setActiveNavSection('doctors');
-                document.getElementById('doctor-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
-                activeNavSection === 'doctors'
-                  ? 'bg-teal-600 text-white shadow-md shadow-teal-950/40'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
+              onClick={() => document.getElementById('doctor-section')?.scrollIntoView({ behavior: 'smooth' })}
+              className="w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all cursor-pointer"
             >
               <div className="flex items-center gap-3">
                 <Stethoscope className="w-4 h-4" />
@@ -531,26 +331,6 @@ export default function AdminMasterCommandCenterPage() {
               </div>
               <span className="px-2 py-0.5 rounded-full bg-slate-800 text-teal-300 text-[10px] font-mono">
                 {doctors.length}
-              </span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveNavSection('patients');
-                document.getElementById('patient-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
-                activeNavSection === 'patients'
-                  ? 'bg-teal-600 text-white shadow-md shadow-teal-950/40'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Users className="w-4 h-4" />
-                <span>Patient Management</span>
-              </div>
-              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-teal-300 text-[10px] font-mono">
-                {patients.length}
               </span>
             </button>
 
@@ -613,7 +393,7 @@ export default function AdminMasterCommandCenterPage() {
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30">
-                  Real-Time Administrative Oversight
+                  Doctor Verification Oversight
                 </span>
                 <span className="text-xs text-slate-300 flex items-center gap-1 font-mono">
                   <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
@@ -624,7 +404,7 @@ export default function AdminMasterCommandCenterPage() {
                 Master Command Center
               </h1>
               <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-                Platform-wide control over physician credentials, patient enrollment, and connected USB IoT biomedical sensors.
+                Centralized credential verification and privileged license review for licensed physicians in the CuraLink clinical network.
               </p>
             </div>
 
@@ -643,47 +423,21 @@ export default function AdminMasterCommandCenterPage() {
         </div>
 
         {/* ------------------------------------------------------------- */}
-        {/* TOP STAT CARDS (Total Patients, Total Doctors, Hardware)      */}
+        {/* STAT CARDS: Focused Clinician Oversight                       */}
         {/* ------------------------------------------------------------- */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Platform Biometrics & Capacity Metrics
+              Clinician Credential Metrics
             </h3>
             <span className="text-[11px] text-teal-400 font-mono flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              Live Firestore Feeds
+              Live Firestore Registry
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Card 1: Total Patients */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 shadow-lg hover:border-slate-700 transition-all relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-28 h-28 bg-teal-500/5 rounded-full blur-2xl pointer-events-none group-hover:bg-teal-500/10 transition-colors" />
-
-              <div className="flex items-center justify-between relative z-10">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Total Patients
-                </span>
-                <div className="w-10 h-10 rounded-2xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 shadow-inner">
-                  <Users className="w-5 h-5" />
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-baseline gap-2 relative z-10">
-                <span className="text-4xl font-black text-white font-mono tracking-tight">
-                  {totalPatientsCount}
-                </span>
-                <span className="text-xs text-slate-400 font-medium">registered user{totalPatientsCount === 1 ? '' : 's'}</span>
-              </div>
-
-              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 relative z-10">
-                <span>{patients.filter((p) => p.hasCompletedOnboarding).length} intake verified</span>
-                <span className="text-teal-400 font-medium">Role: patient</span>
-              </div>
-            </div>
-
-            {/* Card 2: Total Doctors */}
+            {/* Card 1: Total Doctors */}
             <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 shadow-lg hover:border-slate-700 transition-all relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-28 h-28 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none group-hover:bg-indigo-500/10 transition-colors" />
 
@@ -704,41 +458,60 @@ export default function AdminMasterCommandCenterPage() {
               </div>
 
               <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 relative z-10">
-                <span className="text-emerald-400 font-semibold">
-                  {doctors.filter((d) => d.isVerified).length} verified
-                </span>
-                <span className="text-amber-400 font-semibold">
-                  {doctors.filter((d) => !d.isVerified).length} pending review
-                </span>
+                <span className="text-slate-400 font-medium">Role: doctor</span>
+                <span className="text-teal-400 font-mono">collection(&apos;users&apos;)</span>
               </div>
             </div>
 
-            {/* Card 3: Hardware Deployed */}
+            {/* Card 2: Verified Clinicians */}
             <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 shadow-lg hover:border-slate-700 transition-all relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-28 h-28 bg-cyan-500/5 rounded-full blur-2xl pointer-events-none group-hover:bg-cyan-500/10 transition-colors" />
+              <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none group-hover:bg-emerald-500/10 transition-colors" />
 
               <div className="flex items-center justify-between relative z-10">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Hardware Deployed
+                  Verified Doctors
                 </span>
-                <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner">
-                  <Cpu className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-inner">
+                  <UserCheck className="w-5 h-5" />
                 </div>
               </div>
 
               <div className="mt-4 flex items-baseline gap-2 relative z-10">
-                <span className="text-4xl font-black text-cyan-300 font-mono tracking-tight">
-                  {hardwareDeployedCount}
+                <span className="text-4xl font-black text-emerald-300 font-mono tracking-tight">
+                  {verifiedDoctorsCount}
                 </span>
-                <span className="text-xs text-slate-400 font-medium">USB sensor node{hardwareDeployedCount === 1 ? '' : 's'}</span>
+                <span className="text-xs text-slate-400 font-medium">active credential{verifiedDoctorsCount === 1 ? '' : 's'}</span>
               </div>
 
               <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 relative z-10">
-                <span className="text-cyan-400 font-medium flex items-center gap-1">
-                  <Radio className="w-3 h-3" />
-                  Active Telemetry Probes
+                <span className="text-emerald-400 font-semibold">isVerified == true</span>
+                <span className="text-slate-400">Full EHR & Rx Enabled</span>
+              </div>
+            </div>
+
+            {/* Card 3: Pending Review */}
+            <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 shadow-lg hover:border-slate-700 transition-all relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-amber-500/5 rounded-full blur-2xl pointer-events-none group-hover:bg-amber-500/10 transition-colors" />
+
+              <div className="flex items-center justify-between relative z-10">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Pending Verification
                 </span>
-                <span className="text-slate-500 font-mono">/patient/device</span>
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner">
+                  <UserX className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-baseline gap-2 relative z-10">
+                <span className="text-4xl font-black text-amber-300 font-mono tracking-tight">
+                  {pendingDoctorsCount}
+                </span>
+                <span className="text-xs text-slate-400 font-medium">awaiting review</span>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 relative z-10">
+                <span className="text-amber-400 font-semibold">Action Required</span>
+                <span className="text-slate-400">Awaiting Admin Toggle</span>
               </div>
             </div>
           </div>
@@ -756,13 +529,13 @@ export default function AdminMasterCommandCenterPage() {
                   <div className="w-8 h-8 rounded-xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400">
                     <Stethoscope className="w-4 h-4" />
                   </div>
-                  <h2 className="text-lg font-bold text-white tracking-tight">Doctor Verification</h2>
+                  <h2 className="text-lg font-bold text-white tracking-tight">Doctor Verification Registry</h2>
                   <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-teal-300 text-xs font-mono font-bold">
                     {filteredDoctors.length}
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  Manage medical practice credentials and toggle approval privileges across the clinical network.
+                  Review clinician medical licenses and toggle verification privileges in real-time.
                 </p>
               </div>
 
@@ -778,16 +551,6 @@ export default function AdminMasterCommandCenterPage() {
                     All ({doctors.length})
                   </button>
                   <button
-                    onClick={() => setDoctorFilter('pending')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      doctorFilter === 'pending'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                        : 'text-slate-400 hover:text-amber-300'
-                    }`}
-                  >
-                    Pending ({doctors.filter((d) => !d.isVerified).length})
-                  </button>
-                  <button
                     onClick={() => setDoctorFilter('verified')}
                     className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                       doctorFilter === 'verified'
@@ -795,7 +558,17 @@ export default function AdminMasterCommandCenterPage() {
                         : 'text-slate-400 hover:text-emerald-300'
                     }`}
                   >
-                    Verified ({doctors.filter((d) => d.isVerified).length})
+                    Verified ({verifiedDoctorsCount})
+                  </button>
+                  <button
+                    onClick={() => setDoctorFilter('pending')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      doctorFilter === 'pending'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                        : 'text-slate-400 hover:text-amber-300'
+                    }`}
+                  >
+                    Pending ({pendingDoctorsCount})
                   </button>
                 </div>
 
@@ -816,7 +589,7 @@ export default function AdminMasterCommandCenterPage() {
             {dataLoading ? (
               <div className="py-16 text-center space-y-3">
                 <RefreshCw className="w-8 h-8 text-teal-400 animate-spin mx-auto" />
-                <p className="text-xs text-slate-400 font-mono">Querying clinician roster from Firestore...</p>
+                <p className="text-xs text-slate-400 font-mono">Querying clinician registry from Firestore...</p>
               </div>
             ) : filteredDoctors.length === 0 ? (
               <div className="py-16 px-6 text-center space-y-3">
@@ -824,9 +597,7 @@ export default function AdminMasterCommandCenterPage() {
                 <h3 className="text-base font-bold text-white tracking-tight">No Doctors Found</h3>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto">
                   {doctorSearch
-                    ? `No doctor matches "${doctorSearch}".`
-                    : doctorFilter === 'pending'
-                    ? 'All registered doctor accounts are currently verified.'
+                    ? `No clinician records match "${doctorSearch}".`
                     : 'No doctors registered in the system yet.'}
                 </p>
               </div>
@@ -835,44 +606,34 @@ export default function AdminMasterCommandCenterPage() {
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                      <th className="py-3.5 px-6">Doctor Name</th>
+                      <th className="py-3.5 px-6">Clinician Name</th>
                       <th className="py-3.5 px-6">Email Address</th>
-                      <th className="py-3.5 px-6">Medical License Number</th>
+                      <th className="py-3.5 px-6">License Number</th>
+                      <th className="py-3.5 px-6">Specialty</th>
                       <th className="py-3.5 px-6">Status</th>
-                      <th className="py-3.5 px-6 text-right">Approve / Revoke Action</th>
+                      <th className="py-3.5 px-6 text-right">Verification Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
-                    {filteredDoctors.map((doc) => {
-                      const user = doc;
-                      const isActing = actionDoctorId === user.id;
-                      const isVerified = user.isVerified === true;
+                    {filteredDoctors.map((docItem) => {
+                      const isActing = actionDoctorId === docItem.id;
+                      const isVerified = docItem.isVerified === true;
 
                       return (
-                        <tr key={user.id} className="hover:bg-slate-800/40 transition-colors group">
-                          {/* Name & Specialty */}
+                        <tr key={docItem.id} className="hover:bg-slate-800/40 transition-colors group">
+                          {/* Name */}
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-3">
-                              <div
-                                className={`w-9 h-9 rounded-xl border flex items-center justify-center font-bold text-xs shrink-0 ${
-                                  user.isVerified === true
-                                    ? 'bg-teal-500/15 border-teal-500/30 text-teal-300'
-                                    : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                                }`}
-                              >
-                                {(user.fullName || 'Dr. Clinician')
-                                  .split(' ')
-                                  .filter(Boolean)
-                                  .map((n) => n[0])
-                                  .join('')
-                                  .slice(0, 2)
-                                  .toUpperCase() || 'DR'}
+                              <div className="w-9 h-9 rounded-xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center font-bold text-teal-300 text-xs shrink-0">
+                                <Stethoscope className="w-4 h-4 text-teal-400" />
                               </div>
                               <div>
                                 <div className="font-semibold text-white text-xs group-hover:text-teal-300 transition-colors">
-                                  {user.fullName?.trim() || 'Dr. Clinician'}
+                                  {docItem.fullName}
                                 </div>
-                                <div className="text-[11px] text-slate-400">{user.specialty?.trim() || 'General Tele-Medicine'}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  UID: {docItem.id.slice(0, 10)}...
+                                </div>
                               </div>
                             </div>
                           </td>
@@ -882,50 +643,55 @@ export default function AdminMasterCommandCenterPage() {
                             <div className="flex items-center gap-2 font-mono text-[11px] text-slate-300">
                               <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                               <a
-                                href={user.email && user.email !== 'N/A' ? `mailto:${user.email}` : '#'}
+                                href={`mailto:${docItem.email}`}
                                 className="hover:text-teal-300 hover:underline"
                               >
-                                {user.email?.trim() || 'No email provided'}
+                                {docItem.email}
                               </a>
                             </div>
                           </td>
 
-                          {/* License Number: with fallback for empty/undefined */}
+                          {/* License */}
                           <td className="py-4 px-6">
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700/80 font-mono text-[11px]">
-                              <FileBadge className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                              <span className={user.licenseNumber && user.licenseNumber.trim() ? 'text-teal-300' : 'text-slate-400 italic'}>
-                                {user.licenseNumber && user.licenseNumber.trim() ? user.licenseNumber.trim() : 'Pending Submission'}
-                              </span>
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 font-mono text-[11px] text-teal-300">
+                              <FileBadge className="w-3.5 h-3.5 text-teal-400" />
+                              <span>{docItem.licenseNumber || 'Pending Filing'}</span>
                             </div>
                           </td>
 
-                          {/* Verification Status */}
+                          {/* Specialty */}
+                          <td className="py-4 px-6">
+                            <span className="text-slate-300 text-xs">
+                              {docItem.specialty || 'General Tele-Medicine'}
+                            </span>
+                          </td>
+
+                          {/* Status */}
                           <td className="py-4 px-6">
                             <span
                               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                                user.isVerified === true
+                                isVerified
                                   ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                                   : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
                               }`}
                             >
-                              {user.isVerified === true ? (
+                              {isVerified ? (
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                               ) : (
                                 <Clock className="w-3.5 h-3.5 text-amber-400" />
                               )}
-                              <span>{user.isVerified === true ? 'Verified' : 'Unverified'}</span>
+                              <span>{isVerified ? 'Verified' : 'Unverified (Pending)'}</span>
                             </span>
                           </td>
 
-                          {/* Action: Approve / Revoke Toggle */}
+                          {/* Action Toggle */}
                           <td className="py-4 px-6 text-right">
-                            {user.isVerified === true ? (
+                            {isVerified ? (
                               <button
-                                onClick={() => handleToggleVerification(user)}
+                                onClick={() => handleToggleVerification(docItem)}
                                 disabled={isActing}
                                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
-                                title="Revoke medical verification privileges"
+                                title="Revoke clinician verification"
                               >
                                 {isActing ? (
                                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -936,10 +702,10 @@ export default function AdminMasterCommandCenterPage() {
                               </button>
                             ) : (
                               <button
-                                onClick={() => handleToggleVerification(user)}
+                                onClick={() => handleToggleVerification(docItem)}
                                 disabled={isActing}
                                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-emerald-950/40 transition-all cursor-pointer disabled:opacity-50 border border-emerald-400/40"
-                                title="Approve medical license and grant practice clearance"
+                                title="Approve doctor credentials"
                               >
                                 {isActing ? (
                                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -959,419 +725,7 @@ export default function AdminMasterCommandCenterPage() {
             )}
           </div>
         </section>
-
-        {/* ------------------------------------------------------------- */}
-        {/* PATIENT MANAGEMENT TABLE SECTION                              */}
-        {/* ------------------------------------------------------------- */}
-        <section id="patient-section" className="space-y-4 pt-4">
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-sm">
-            {/* Header & Search */}
-            <div className="p-5 sm:p-6 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <h2 className="text-lg font-bold text-white tracking-tight">Patient Management</h2>
-                  <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-teal-300 text-xs font-mono font-bold">
-                    {filteredPatients.length}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Inspect patient onboarding records and view individual connected USB IoT hardware telemetry IDs.
-                </p>
-              </div>
-
-              {/* Sub-filters & Search Bar */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-                  <button
-                    onClick={() => setPatientFilter('all')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      patientFilter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    All ({patients.length})
-                  </button>
-                  <button
-                    onClick={() => setPatientFilter('connected')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      patientFilter === 'connected'
-                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                        : 'text-slate-400 hover:text-cyan-300'
-                    }`}
-                  >
-                    IoT Paired ({hardwareDeployedCount})
-                  </button>
-                  <button
-                    onClick={() => setPatientFilter('onboarded')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      patientFilter === 'onboarded'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                        : 'text-slate-400 hover:text-emerald-300'
-                    }`}
-                  >
-                    Onboarded ({patients.filter((p) => p.hasCompletedOnboarding).length})
-                  </button>
-                </div>
-
-                <div className="relative w-full sm:w-64">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={patientSearch}
-                    onChange={(e) => setPatientSearch(e.target.value)}
-                    placeholder="Search patient, email, hardware ID..."
-                    className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 transition-colors"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Table Content */}
-            {dataLoading ? (
-              <div className="py-16 text-center space-y-3">
-                <RefreshCw className="w-8 h-8 text-teal-400 animate-spin mx-auto" />
-                <p className="text-xs text-slate-400 font-mono">Querying patient accounts from Firestore...</p>
-              </div>
-            ) : filteredPatients.length === 0 ? (
-              <div className="py-16 px-6 text-center space-y-3">
-                <Users className="w-10 h-10 text-slate-600 mx-auto stroke-1" />
-                <h3 className="text-base font-bold text-white tracking-tight">No Patients Found</h3>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                  {patientSearch
-                    ? `No patient records match "${patientSearch}".`
-                    : 'No patients registered in the directory yet.'}
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                      <th className="py-3.5 px-6">Patient Name</th>
-                      <th className="py-3.5 px-6">Email Address</th>
-                      <th className="py-3.5 px-6">Verification</th>
-                      <th className="py-3.5 px-6">Medical Onboarding</th>
-                      <th className="py-3.5 px-6">Hardware Status</th>
-                      <th className="py-3.5 px-6 text-right">Approve / Oversight</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
-                    {filteredPatients.map((pt) => {
-                      const user = pt;
-                      const isActing = actionDoctorId === user.id;
-                      // Fallback: If user.isVerified is missing or undefined, strictly evaluate as false (Unverified)
-                      const isVerified = user.isVerified === true;
-                      const hasHardware = user.lastSyncedTemperature !== undefined || !!user.deviceModel || !!user.hardwareId;
-
-                      return (
-                        <tr key={user.id} className="hover:bg-slate-800/40 transition-colors group">
-                          {/* Name */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center font-bold text-cyan-300 text-xs shrink-0">
-                                {(user.fullName || 'Patient User')
-                                  .split(' ')
-                                  .filter(Boolean)
-                                  .map((n) => n[0])
-                                  .join('')
-                                  .slice(0, 2)
-                                  .toUpperCase() || 'PT'}
-                              </div>
-                              <div>
-                                <div className="font-semibold text-white text-xs group-hover:text-cyan-300 transition-colors flex items-center gap-1.5">
-                                  <span>{user.fullName?.trim() || 'Patient User'}</span>
-                                  {user.bloodGroup && user.bloodGroup !== 'Not specified' && (
-                                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                                      {user.bloodGroup}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-[10px] text-slate-400 font-mono">
-                                  UID: {user.id.slice(0, 10)}...
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* Email */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center gap-2 font-mono text-[11px] text-slate-300">
-                              <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                              <a
-                                href={user.email && user.email !== 'N/A' ? `mailto:${user.email}` : '#'}
-                                className="hover:text-cyan-300 hover:underline"
-                              >
-                                {user.email?.trim() || 'No email provided'}
-                              </a>
-                            </div>
-                          </td>
-
-                          {/* Verification Status (handle missing data: undefined/missing strictly evaluated as false) */}
-                          <td className="py-4 px-6">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                                user.isVerified === true
-                                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                                  : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                              }`}
-                            >
-                              {user.isVerified === true ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                              ) : (
-                                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                              )}
-                              <span>{user.isVerified === true ? 'Verified' : 'Unverified'}</span>
-                            </span>
-                          </td>
-
-                          {/* Medical Onboarding */}
-                          <td className="py-4 px-6">
-                            {user.hasCompletedOnboarding ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Onboarded</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
-                                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Pending Intake</span>
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Hardware Connection Status */}
-                          <td className="py-4 px-6">
-                            {hasHardware ? (
-                              <div className="space-y-0.5">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 border border-teal-500/40 text-[10px] font-mono font-bold">
-                                  <Thermometer className="w-3 h-3 text-teal-400" />
-                                  <span>{user.lastSyncedTemperature ? `${user.lastSyncedTemperature.toFixed(1)}°C` : 'USB Stream'}</span>
-                                </span>
-                                <p className="text-[10px] text-slate-400 truncate max-w-[130px]">
-                                  {user.deviceModel || 'USB Serial Sensor'}
-                                </p>
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                                <Radio className="w-3 h-3 text-slate-600" />
-                                <span>Standby / Unpaired</span>
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Actions: Approve / Revoke Toggle & View Connected IoT Hardware ID Button */}
-                          <td className="py-4 px-6 text-right">
-                            <div className="inline-flex items-center justify-end gap-2">
-                              {user.isVerified === true ? (
-                                <button
-                                  onClick={() => handleToggleVerification(user)}
-                                  disabled={isActing}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
-                                  title="Revoke verification privileges"
-                                >
-                                  {isActing ? (
-                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <X className="w-3.5 h-3.5" />
-                                  )}
-                                  <span>Revoke</span>
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleToggleVerification(user)}
-                                  disabled={isActing}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-emerald-950/40 transition-all cursor-pointer disabled:opacity-50 border border-emerald-400/40"
-                                  title="Approve patient verification"
-                                >
-                                  {isActing ? (
-                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                                  )}
-                                  <span>Approve</span>
-                                </button>
-                              )}
-                              <button
-                                onClick={() => setSelectedPatientForHardware(pt)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-teal-600/20 text-slate-200 hover:text-teal-300 border border-slate-700 hover:border-teal-500/50 font-bold text-xs transition-all cursor-pointer"
-                                title="View connected USB IoT Hardware ID and telemetry specs"
-                              >
-                                <Cpu className="w-3.5 h-3.5 text-teal-400" />
-                                <span>IoT Hardware</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </section>
       </main>
-
-      {/* ------------------------------------------------------------- */}
-      {/* CONNECTED IOT HARDWARE ID INSPECTOR MODAL                     */}
-      {/* ------------------------------------------------------------- */}
-      {selectedPatientForHardware && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150 overflow-y-auto"
-          onClick={() => setSelectedPatientForHardware(null)}
-        >
-          <div
-            className="bg-slate-900 border border-teal-500/40 rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl text-left animate-in zoom-in-95 duration-200 my-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-teal-950 p-6 border-b border-slate-800 relative">
-              <button
-                onClick={() => setSelectedPatientForHardware(null)}
-                className="absolute right-4 top-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30 flex items-center gap-1">
-                  <Cpu className="w-3 h-3 text-teal-400" />
-                  Hardware Registry Telemetry
-                </span>
-                <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  Live Node
-                </span>
-              </div>
-
-              <h3 className="text-xl font-black tracking-tight text-white">
-                {selectedPatientForHardware.fullName}
-              </h3>
-              <p className="text-xs text-slate-400 font-mono mt-0.5">
-                {selectedPatientForHardware.email}
-              </p>
-            </div>
-
-            {/* Modal Body: Hardware Details */}
-            <div className="p-6 space-y-4 text-xs">
-              {/* Primary Hardware ID Display */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-teal-500/30 space-y-2">
-                <span className="text-[10px] uppercase font-bold text-teal-300 tracking-wider">
-                  Assigned IoT Hardware ID (Web Serial / USB Node)
-                </span>
-                <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-                  <span className="font-mono text-xs sm:text-sm text-white font-bold tracking-wide truncate">
-                    {selectedPatientForHardware.hardwareId ||
-                      `USB-IOT-${selectedPatientForHardware.id.slice(0, 10).toUpperCase()}`}
-                  </span>
-                  <button
-                    onClick={() =>
-                      handleCopyHardwareId(
-                        selectedPatientForHardware.hardwareId ||
-                          `USB-IOT-${selectedPatientForHardware.id.slice(0, 10).toUpperCase()}`
-                      )
-                    }
-                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0 flex items-center gap-1 text-[11px]"
-                    title="Copy Hardware ID to Clipboard"
-                  >
-                    {copiedHardwareId ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="text-emerald-400 font-bold">Copied</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copy</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Hardware Telemetry Parameters */}
-              <div className="grid grid-cols-2 gap-3">
-                {/* Last Synced Temp */}
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1">
-                    <Thermometer className="w-3.5 h-3.5 text-teal-400" />
-                    Last Synced Temp
-                  </span>
-                  <div className="text-xl font-black font-mono text-white">
-                    {selectedPatientForHardware.lastSyncedTemperature !== undefined
-                      ? `${selectedPatientForHardware.lastSyncedTemperature.toFixed(1)}°C`
-                      : 'None recorded'}
-                  </div>
-                  {selectedPatientForHardware.lastSyncedTemperature !== undefined && (
-                    <p className="text-[10px] text-slate-400 font-mono">
-                      ({((selectedPatientForHardware.lastSyncedTemperature * 9) / 5 + 32).toFixed(1)}°F)
-                    </p>
-                  )}
-                </div>
-
-                {/* Connection Protocol */}
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1">
-                    <Radio className="w-3.5 h-3.5 text-cyan-400" />
-                    Hardware Protocol
-                  </span>
-                  <div className="text-xs font-bold font-mono text-white pt-1">
-                    Web Serial API (USB)
-                  </div>
-                  <p className="text-[10px] text-emerald-400 font-mono">Baud Rate: 115200</p>
-                </div>
-              </div>
-
-              {/* Hardware Model & Specifications */}
-              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1 text-slate-300">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Sensor Device Model:</span>
-                  <span className="font-mono text-white font-semibold">
-                    {selectedPatientForHardware.deviceModel || 'USB Serial Sensor (LM35/DS18B20)'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
-                  <span className="text-slate-400">Last Telemetry Sync:</span>
-                  <span className="font-mono text-teal-300">
-                    {selectedPatientForHardware.lastSyncedAt
-                      ? new Date(selectedPatientForHardware.lastSyncedAt).toLocaleString()
-                      : 'Awaiting initial stream'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
-                  <span className="text-slate-400">Patient Status:</span>
-                  <span
-                    className={`font-bold capitalize ${
-                      selectedPatientForHardware.temperatureStatus === 'critical'
-                        ? 'text-rose-400'
-                        : selectedPatientForHardware.temperatureStatus === 'elevated'
-                        ? 'text-amber-400'
-                        : 'text-emerald-400'
-                    }`}
-                  >
-                    {selectedPatientForHardware.temperatureStatus || 'Nominal'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-5 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between">
-              <span className="text-[10px] text-slate-400 font-mono">
-                Encrypted Patient Device Bridge
-              </span>
-              <button
-                onClick={() => setSelectedPatientForHardware(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors cursor-pointer"
-              >
-                Close Inspector
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

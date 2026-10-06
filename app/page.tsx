@@ -93,7 +93,7 @@ export default function CuraLinkApp() {
   // Handle Role Switch
   const handleToggleRole = () => {
     toggleRole();
-    if (role === 'Patient') {
+    if (role?.toLowerCase() === 'patient') {
       setActiveTab('clinical-queue');
     } else {
       setActiveTab('overview');
@@ -107,8 +107,8 @@ export default function CuraLinkApp() {
         id: `apt_quick_${Date.now()}`,
         patientId: activePatientId,
         patientName: appointmentOrName,
-        doctorId: currentUser?.role === 'Doctor' ? currentUser.uid : 'attending_physician',
-        doctorName: currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician',
+        doctorId: currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.uid : 'attending_physician',
+        doctorName: currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician',
         doctorSpecialty: 'Telehealth Consultation',
         date: 'Today',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -180,7 +180,7 @@ export default function CuraLinkApp() {
         {/* Content View Stage */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
           {/* ================= PATIENT PORTAL VIEWS ================= */}
-          {role === 'Patient' && (
+          {role?.toLowerCase() === 'patient' && (
             <>
               {activeTab === 'overview' && (
                 <PatientDashboard
@@ -237,7 +237,7 @@ export default function CuraLinkApp() {
           )}
 
           {/* ================= DOCTOR PORTAL VIEWS ================= */}
-          {role === 'Doctor' && (
+          {role?.toLowerCase() === 'doctor' && (
             <>
               {(activeTab === 'clinical-queue' || activeTab === ('overview' as any)) && (
                 <DoctorDashboard
@@ -352,7 +352,7 @@ export default function CuraLinkApp() {
         onClose={() => setIsAuthModalOpen(false)}
         onSuccess={(profile) => {
           setAuthenticatedProfile(profile);
-          if (profile.role === 'Doctor') setActiveTab('clinical-queue');
+          if (profile.role?.toLowerCase() === 'doctor') setActiveTab('clinical-queue');
           else setActiveTab('overview');
         }}
         initialRole={role}
@@ -368,11 +368,11 @@ export default function CuraLinkApp() {
         appointment={activeCallAppointment}
         telemetry={telemetry}
         onOpenEHR={() => {
-          if (role === 'Doctor' && activeCallAppointment) {
+          if (role?.toLowerCase() === 'doctor' && activeCallAppointment) {
             handleOpenEHR(activeCallAppointment.patientName);
           }
         }}
-        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician'}
+        doctorName={currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician'}
         role={role}
         currentUser={currentUser}
       />
@@ -383,7 +383,7 @@ export default function CuraLinkApp() {
         onClose={() => setIsEHRModalOpen(false)}
         onIssuePrescription={handleIssuePrescription}
         defaultPatientName={targetEhrPatientName}
-        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician'}
+        doctorName={currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician'}
       />
 
       {/* IoT Hardware Simulator Drawer */}

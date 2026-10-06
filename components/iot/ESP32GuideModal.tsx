@@ -139,42 +139,44 @@ void loop() {
             </div>
           </div>
 
-          {/* Wiring Pinout Table */}
+          {/* Wiring Pinout: Mobile Cards with Rounded Corners */}
           <div>
-            <h4 className="font-bold text-slate-900 uppercase tracking-wider mb-2">
+            <h4 className="font-bold text-slate-900 uppercase tracking-wider mb-2 text-xs">
               Recommended Hardware Pinout
             </h4>
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-bold uppercase">
-                  <tr>
-                    <th className="p-2.5">Sensor Module</th>
-                    <th className="p-2.5">Pin Name</th>
-                    <th className="p-2.5">ESP32 Pin</th>
-                    <th className="p-2.5">Description</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
-                  <tr>
-                    <td className="p-2.5 font-bold">MAX30102 PPG</td>
-                    <td className="p-2.5 font-mono">SDA / SCL</td>
-                    <td className="p-2.5 font-mono font-bold text-teal-700">GPIO 21 / GPIO 22</td>
-                    <td className="p-2.5">I2C Heart Rate & Pulse Oximetry</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2.5 font-bold">DS18B20 Temp</td>
-                    <td className="p-2.5 font-mono">DATA</td>
-                    <td className="p-2.5 font-mono font-bold text-teal-700">GPIO 4 (4.7kΩ Pullup)</td>
-                    <td className="p-2.5">1-Wire Body Temperature Probe</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2.5 font-bold">Power Supply</td>
-                    <td className="p-2.5 font-mono">VCC / GND</td>
-                    <td className="p-2.5 font-mono font-bold text-teal-700">3.3V / GND</td>
-                    <td className="p-2.5">Regulated 3.3V power rails</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900 text-xs">MAX30102 PPG</span>
+                  <span className="text-[10px] font-mono font-bold bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full border border-teal-200">
+                    GPIO 21 / 22
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500 font-mono">Pin: SDA / SCL</div>
+                <p className="text-[11px] text-slate-600">I2C Heart Rate & Pulse Oximetry</p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900 text-xs">DS18B20 Temp</span>
+                  <span className="text-[10px] font-mono font-bold bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full border border-teal-200">
+                    GPIO 4 (4.7kΩ)
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500 font-mono">Pin: DATA (1-Wire)</div>
+                <p className="text-[11px] text-slate-600">1-Wire Body Temperature Probe</p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900 text-xs">Power Supply</span>
+                  <span className="text-[10px] font-mono font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full">
+                    3.3V / GND
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500 font-mono">Pin: VCC / GND</div>
+                <p className="text-[11px] text-slate-600">Regulated 3.3V power rails</p>
+              </div>
             </div>
           </div>
 

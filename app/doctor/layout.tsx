@@ -52,7 +52,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   } = useTelehealth();
 
   // RBAC Access Control Guard: block patients from accessing doctor routes
-  if (role === 'Patient') {
+  if (role?.toLowerCase() === 'patient') {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 text-center">
         <div className="w-16 h-16 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mb-4">
@@ -159,7 +159,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             openEHR(activeCallAppointment.patientName);
           }
         }}
-        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician'}
+        doctorName={currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician'}
         role="Doctor"
         currentUser={currentUser}
       />
@@ -169,7 +169,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         onClose={closeEHR}
         onIssuePrescription={addPrescription}
         defaultPatientName={targetEhrPatientName}
-        doctorName={currentUser?.role === 'Doctor' ? currentUser.fullName : 'Attending Physician'}
+        doctorName={currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician'}
         patientDirectory={patientDirectory}
       />
 
@@ -195,7 +195,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         onClose={closeAuthModal}
         onSuccess={(profile) => {
           setAuthenticatedProfile(profile);
-          if (profile.role === 'Doctor') router.push('/doctor/dashboard');
+          if (profile.role?.toLowerCase() === 'doctor') router.push('/doctor/dashboard');
           else router.push('/patient/dashboard');
         }}
         initialRole="Doctor"

@@ -9,11 +9,10 @@ import {
   Clock,
   User,
   Plus,
-  CheckCircle,
   CheckCircle2,
   CreditCard,
-  ExternalLink,
   MapPin,
+  Sparkles,
 } from 'lucide-react';
 
 interface AppointmentsListProps {
@@ -43,60 +42,66 @@ export function AppointmentsList({
   const nextAppointment = appointments.find((a) => a.status === 'Upcoming');
 
   return (
-    <div className="space-y-6">
-      {/* Top Header & Quick Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+    <div className="space-y-5 max-w-4xl mx-auto pb-6">
+      {/* Top Banner Card: Material 3 rounded-3xl container */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-xs">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-            Consultations & Telehealth Visits
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
+              Telehealth Visits
+            </span>
+            <span className="text-[11px] text-slate-500 font-medium">Encrypted WebRTC</span>
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight mt-1">
+            Doctor Consultations
           </h2>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 mt-0.5">
             Connect with board-certified physicians via encrypted HD video calls
           </p>
         </div>
 
         <button
           onClick={() => setIsBookModalOpen(true)}
-          className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-2"
+          className="px-5 py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 self-start sm:self-auto w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>Book New Consultation</span>
+          <span>Book Consultation</span>
         </button>
       </div>
 
-      {/* Featured Next Appointment Card (if available) */}
+      {/* Featured Next Scheduled Appointment Mobile Card */}
       {nextAppointment && (
-        <div className="bg-gradient-to-br from-teal-900 via-slate-900 to-slate-950 text-white p-6 rounded-3xl shadow-lg border border-teal-800/40 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="bg-gradient-to-br from-teal-900 via-slate-900 to-slate-950 text-white p-5 sm:p-6 rounded-3xl shadow-lg border border-teal-800/40 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-3">
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div className="space-y-2.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30">
+                <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30">
                   Next Scheduled Visit
                 </span>
                 <span className="text-xs text-slate-300 flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-teal-400" />
-                  {nextAppointment.date} at {nextAppointment.time}
+                  {nextAppointment.date} • {nextAppointment.time}
                 </span>
                 {nextAppointment.paymentStatus === 'Paid' ? (
-                  <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                     Paid (₹{nextAppointment.paymentAmount || 500})
                   </span>
                 ) : (
-                  <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
                     <CreditCard className="w-3 h-3 text-amber-400" />
-                    Fee: ₹500 Due
+                    Fee Due
                   </span>
                 )}
               </div>
 
               <div>
-                <h3 className="text-xl font-bold text-white tracking-tight">
+                <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">
                   {nextAppointment.doctorName}
                 </h3>
-                <p className="text-xs text-teal-300 font-medium">
+                <p className="text-xs text-teal-300 font-semibold">
                   {nextAppointment.doctorSpecialty}
                 </p>
               </div>
@@ -106,17 +111,17 @@ export function AppointmentsList({
               </p>
             </div>
 
-            <div className="shrink-0 flex flex-col sm:flex-row gap-3">
+            <div className="shrink-0 w-full sm:w-auto">
               {nextAppointment.type === 'Video Call' ? (
                 <button
                   onClick={() => onJoinVideoCall(nextAppointment)}
-                  className="px-5 py-3 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-white font-bold text-xs shadow-lg shadow-teal-900/50 transition-all cursor-pointer flex items-center justify-center gap-2 group"
+                  className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-white font-bold text-xs shadow-lg shadow-teal-900/50 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 group"
                 >
                   <Video className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  <span>Start / Join Video Call</span>
+                  <span>Start Video Visit</span>
                 </button>
               ) : (
-                <div className="px-4 py-3 rounded-2xl bg-white/10 text-xs font-semibold text-slate-200 flex items-center gap-2">
+                <div className="px-4 py-3 rounded-2xl bg-white/10 text-xs font-semibold text-slate-200 flex items-center justify-center gap-2">
                   <MapPin className="w-4 h-4 text-teal-400" />
                   <span>In-Clinic Visit</span>
                 </div>
@@ -126,18 +131,24 @@ export function AppointmentsList({
         </div>
       )}
 
-      {/* Appointment History List */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <h3 className="text-sm font-bold text-slate-900">All Appointments & Records</h3>
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+      {/* Appointment History List Container */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs space-y-4">
+        {/* Header & Filter Chips */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">All Scheduled Consultations</h3>
+            <p className="text-[11px] text-slate-400">{filteredAppointments.length} record(s)</p>
+          </div>
+
+          {/* Material 3 Filter Chips */}
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-full self-start sm:self-auto">
             {(['All', 'Upcoming', 'Completed'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setFilter(tab)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-all m3-pressable cursor-pointer ${
                   filter === tab
-                    ? 'bg-white text-slate-900 shadow-xs'
+                    ? 'bg-white text-slate-900 shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -147,21 +158,22 @@ export function AppointmentsList({
           </div>
         </div>
 
+        {/* Clean Mobile Cards with Rounded Corners */}
         <div className="space-y-3">
           {filteredAppointments.length === 0 ? (
-            <div className="py-12 px-6 rounded-2xl bg-slate-50/50 border border-dashed border-slate-200 flex flex-col items-center justify-center text-center">
+            <div className="py-12 px-6 rounded-3xl bg-slate-50 border border-dashed border-slate-200 flex flex-col items-center justify-center text-center">
               <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
                 <Calendar className="w-6 h-6" />
               </div>
               <h4 className="text-sm font-semibold text-slate-800 mb-1">
-                No upcoming appointments scheduled
+                No appointments found
               </h4>
               <p className="text-xs text-slate-500 max-w-sm mb-4">
-                You don't have any appointments currently. Schedule a virtual or in-clinic visit with a verified clinician.
+                Schedule a virtual or in-clinic visit with a verified clinician.
               </p>
               <button
                 onClick={() => setIsBookModalOpen(true)}
-                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs transition-all m3-pressable flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Book First Consultation</span>
@@ -171,59 +183,72 @@ export function AppointmentsList({
             filteredAppointments.map((apt) => (
               <div
                 key={apt.id}
-                className="p-4 rounded-2xl border border-slate-200/80 hover:border-slate-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                className="p-4 sm:p-5 rounded-3xl bg-white border border-slate-200/80 hover:border-slate-300 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between gap-3.5"
               >
-                <div className="flex items-start gap-3.5">
-                  <div className="w-10 h-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
-                    {apt.type === 'Video Call' ? (
-                      <Video className="w-5 h-5" />
-                    ) : (
-                      <User className="w-5 h-5" />
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="text-sm font-bold text-slate-900">{apt.doctorName}</h4>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                          apt.status === 'Upcoming'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {apt.status}
-                      </span>
-                      {apt.paymentStatus === 'Paid' ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-teal-50 text-teal-700 border border-teal-200 flex items-center gap-1 font-mono">
-                          <CheckCircle2 className="w-3 h-3 text-teal-600" />
-                          Paid (₹{apt.paymentAmount || 500})
-                        </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="w-11 h-11 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
+                      {apt.type === 'Video Call' ? (
+                        <Video className="w-5 h-5" />
                       ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 font-mono">
-                          <CreditCard className="w-3 h-3 text-amber-600" />
-                          ₹500 Fee Due
-                        </span>
+                        <User className="w-5 h-5" />
                       )}
                     </div>
-                    <p className="text-xs text-teal-700 font-medium">{apt.doctorSpecialty}</p>
-                    <p className="text-xs text-slate-500 mt-1">{apt.symptoms}</p>
+
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-900 truncate">
+                          {apt.doctorName}
+                        </h4>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                            apt.status === 'Upcoming'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {apt.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-teal-700 font-medium mt-0.5">
+                        {apt.doctorSpecialty}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">{apt.symptoms}</p>
+                    </div>
+                  </div>
+
+                  {/* Payment Pill */}
+                  <div className="shrink-0 text-right">
+                    {apt.paymentStatus === 'Paid' ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-teal-50 text-teal-700 border border-teal-200 flex items-center gap-1 font-mono">
+                        <CheckCircle2 className="w-3 h-3 text-teal-600" />
+                        Paid (₹{apt.paymentAmount || 500})
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 font-mono">
+                        <CreditCard className="w-3 h-3 text-amber-600" />
+                        ₹500 Due
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                  <div className="text-left sm:text-right">
-                    <p className="text-xs font-bold text-slate-800">{apt.date}</p>
-                    <p className="text-[11px] text-slate-500 font-mono">{apt.time}</p>
+                {/* Bottom Row: Date & Action Button */}
+                <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
+                    <Clock className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                    <span className="font-semibold text-slate-800">{apt.date}</span>
+                    <span>•</span>
+                    <span className="font-mono text-slate-500">{apt.time}</span>
                   </div>
 
                   {apt.status === 'Upcoming' && apt.type === 'Video Call' && (
                     <button
                       onClick={() => onJoinVideoCall(apt)}
-                      className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                      className="w-full sm:w-auto px-4 py-2 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all m3-pressable cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <Video className="w-3.5 h-3.5" />
-                      <span>Join Visit</span>
+                      <span>Start Video Visit</span>
                     </button>
                   )}
                 </div>

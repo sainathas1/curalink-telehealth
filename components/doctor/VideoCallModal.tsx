@@ -41,7 +41,7 @@ export function VideoCallModal({
   role = 'Doctor',
   currentUser,
 }: VideoCallModalProps) {
-  const isPatient = role === 'Patient';
+  const isPatient = role?.toLowerCase() === 'patient';
   const [callDuration, setCallDuration] = useState(0);
   const [clinicalNotes, setClinicalNotes] = useState('');
   const [notesSaved, setNotesSaved] = useState(false);

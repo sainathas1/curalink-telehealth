@@ -17,9 +17,10 @@ import {
   ChevronRight,
   Shield,
   Link as LinkIcon,
+  User,
 } from 'lucide-react';
 
-export type PatientTab = 'overview' | 'vitals' | 'device' | 'appointments' | 'prescriptions' | 'records';
+export type PatientTab = 'overview' | 'vitals' | 'device' | 'appointments' | 'prescriptions' | 'records' | 'profile';
 export type DoctorTab = 'clinical-queue' | 'ward-telemetry' | 'patient-directory' | 'ehr-prescribe' | 'hardware-hub';
 export type ActiveTab = PatientTab | DoctorTab;
 
@@ -49,6 +50,7 @@ export function Sidebar({
     { id: 'appointments', label: 'Appointments', icon: <Calendar className="w-5 h-5" /> },
     { id: 'prescriptions', label: 'Prescriptions', icon: <Pill className="w-5 h-5" /> },
     { id: 'records', label: 'Medical Records', icon: <FileText className="w-5 h-5" /> },
+    { id: 'profile', label: 'Profile', icon: <User className="w-5 h-5" /> },
   ];
 
   const doctorNavItems: { id: DoctorTab; label: string; icon: React.ReactNode; badge?: string }[] = [
@@ -59,7 +61,8 @@ export function Sidebar({
     { id: 'hardware-hub', label: 'IoT Hardware Hub', icon: <Cpu className="w-5 h-5" /> },
   ];
 
-  const items = role === 'Patient' ? patientNavItems : doctorNavItems;
+  const isPatient = role?.toLowerCase() === 'patient';
+  const items = isPatient ? patientNavItems : doctorNavItems;
 
   return (
     <aside
@@ -74,7 +77,7 @@ export function Sidebar({
           {!isCollapsed && (
             <div>
               <span className="text-[10px] font-bold uppercase tracking-widest text-teal-400">
-                {role === 'Doctor' ? 'Clinician Command' : 'Patient Health Portal'}
+                {role?.toLowerCase() === 'doctor' ? 'Clinician Command' : 'Patient Health Portal'}
               </span>
               <p className="text-xs text-slate-400 font-medium">CuraLink TeleCare</p>
             </div>
@@ -136,7 +139,7 @@ export function Sidebar({
 
       {/* Bottom Emergency SOS Card (Patient) or Security Status (Doctor) */}
       <div className="p-4 border-t border-slate-800">
-        {role === 'Patient' ? (
+        {isPatient ? (
           !isCollapsed ? (
             <div className="p-3.5 rounded-2xl bg-gradient-to-br from-rose-950/70 to-slate-900 border border-rose-800/40 space-y-2">
               <div className="flex items-center gap-2 text-rose-400">

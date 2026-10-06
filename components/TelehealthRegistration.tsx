@@ -173,14 +173,15 @@ export default function TelehealthRegistration() {
       // 2. Save user's Full Name, Email, Phone, and Role to Firestore collection 'users'
       const userDocRef = doc(db, 'users', user.uid);
       const trimmedPhone = phoneNumber.trim();
+      const enforcedRole: 'patient' | 'doctor' = role.toLowerCase() === 'doctor' ? 'doctor' : 'patient';
       const newUserData: Record<string, unknown> = {
         uid: user.uid,
         fullName: trimmedName,
         email: trimmedEmail,
-        role: role,
+        role: enforcedRole,
         isVerified: false,
         createdAt: serverTimestamp(),
-        hasCompletedOnboarding: role === 'Patient' ? false : true,
+        hasCompletedOnboarding: enforcedRole === 'patient' ? false : true,
       };
       if (trimmedPhone) {
         newUserData.phoneNumber = trimmedPhone;
@@ -290,13 +291,14 @@ export default function TelehealthRegistration() {
       const resolvedPhone = phoneNumber.trim() || user.phoneNumber || '';
 
       if (!existingSnap.exists()) {
+        const enforcedRole: 'patient' | 'doctor' = role.toLowerCase() === 'doctor' ? 'doctor' : 'patient';
         const newUserData: Record<string, unknown> = {
           uid: user.uid,
           fullName: resolvedName,
           email: resolvedEmail,
-          role: role,
+          role: enforcedRole,
           isVerified: false,
-          hasCompletedOnboarding: role === 'Patient' ? false : true,
+          hasCompletedOnboarding: enforcedRole === 'patient' ? false : true,
           createdAt: serverTimestamp(),
         };
         if (resolvedPhone) {
@@ -325,7 +327,7 @@ export default function TelehealthRegistration() {
         const data = existingSnap.data() as UserProfileData;
         setUserProfile(data);
         setSuccessMessage(
-          `Welcome back, ${data.role === 'Doctor' ? `Dr. ` : ''}${data.fullName}!`
+          `Welcome back, ${data.role?.toLowerCase() === 'doctor' ? `Dr. ` : ''}${data.fullName}!`
         );
       }
       resetForm();
@@ -473,7 +475,7 @@ export default function TelehealthRegistration() {
               <div className="space-y-6 my-auto py-4">
                 <div className="text-center space-y-2">
                   <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-teal-50 border-2 border-teal-200 text-teal-600 mb-2">
-                    {userProfile.role === 'Doctor' ? (
+                    {userProfile.role?.toLowerCase() === 'doctor' ? (
                       <Stethoscope className="w-8 h-8" />
                     ) : (
                       <User className="w-8 h-8" />
@@ -483,7 +485,7 @@ export default function TelehealthRegistration() {
                     {userProfile.role} Profile Active
                   </span>
                   <h2 className="text-2xl font-bold text-slate-900">
-                    {userProfile.role === 'Doctor' ? `Dr. ${userProfile.fullName}` : userProfile.fullName}
+                    {userProfile.role?.toLowerCase() === 'doctor' ? `Dr. ${userProfile.fullName}` : userProfile.fullName}
                   </h2>
                   <p className="text-sm text-slate-500">{userProfile.email}</p>
                 </div>
@@ -507,7 +509,7 @@ export default function TelehealthRegistration() {
                     <div>
                       <span className="text-xs text-slate-500 block">Assigned Role:</span>
                       <span className="inline-flex items-center gap-1 font-semibold text-teal-700">
-                        {userProfile.role === 'Doctor' ? (
+                        {userProfile.role?.toLowerCase() === 'doctor' ? (
                           <Stethoscope className="w-3.5 h-3.5" />
                         ) : (
                           <User className="w-3.5 h-3.5" />
@@ -545,7 +547,7 @@ export default function TelehealthRegistration() {
                       <CalendarCheck className="w-5 h-5 text-teal-600" />
                       <div>
                         <p className="text-xs font-bold text-slate-800">
-                          {userProfile.role === 'Doctor' ? 'Manage Schedule' : 'Book Appointment'}
+                          {userProfile.role?.toLowerCase() === 'doctor' ? 'Manage Schedule' : 'Book Appointment'}
                         </p>
                         <p className="text-[11px] text-slate-500">Virtual video consultation</p>
                       </div>
@@ -554,7 +556,7 @@ export default function TelehealthRegistration() {
                       <ClipboardList className="w-5 h-5 text-teal-600" />
                       <div>
                         <p className="text-xs font-bold text-slate-800">
-                          {userProfile.role === 'Doctor' ? 'Patient Charts' : 'Health Records'}
+                          {userProfile.role?.toLowerCase() === 'doctor' ? 'Patient Charts' : 'Health Records'}
                         </p>
                         <p className="text-[11px] text-slate-500">Encrypted medical files</p>
                       </div>

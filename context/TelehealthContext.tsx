@@ -115,7 +115,7 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
     }
 
     const currentUid = authState.currentUser.uid;
-    const isDoctor = authState.currentUser.role === 'Doctor';
+    const isDoctor = authState.currentUser.role?.toLowerCase() === 'doctor';
     const unsubscribers: (() => void)[] = [];
 
     try {
@@ -160,7 +160,7 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
 
       // 4. Patient Directory (Doctors)
       if (isDoctor) {
-        const patientsQuery = query(collection(db, 'users'), where('role', '==', 'Patient'));
+        const patientsQuery = query(collection(db, 'users'), where('role', 'in', ['patient', 'Patient']));
         const unsubPatients = onSnapshot(patientsQuery, (snapshot) => {
           const dir: PatientDirectoryItem[] = [];
           snapshot.forEach((d) => {
@@ -246,8 +246,8 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
         id: `apt_quick_${Date.now()}`,
         patientId: authState.currentUser?.uid || 'patient_direct',
         patientName: aptOrName || authState.currentUser?.fullName || 'Patient',
-        doctorId: authState.currentUser?.role === 'Doctor' ? authState.currentUser.uid : 'doctor_on_call',
-        doctorName: authState.currentUser?.role === 'Doctor' ? authState.currentUser.fullName : 'Attending Clinician',
+        doctorId: authState.currentUser?.role?.toLowerCase() === 'doctor' ? authState.currentUser.uid : 'doctor_on_call',
+        doctorName: authState.currentUser?.role?.toLowerCase() === 'doctor' ? authState.currentUser.fullName : 'Attending Clinician',
         doctorSpecialty: 'Telehealth Care',
         date: 'Today',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),

@@ -6,6 +6,7 @@ import { useTelehealth } from '../../context/TelehealthContext';
 import { auth, db } from '../../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { TopHeader } from '../../components/navbar/TopHeader';
+import { MobileTopAppBar } from '../../components/navbar/MobileTopAppBar';
 import { Sidebar, PatientTab } from '../../components/navbar/Sidebar';
 import { MobileNav } from '../../components/navbar/MobileNav';
 
@@ -14,20 +15,18 @@ import { HardwareSimulatorDrawer } from '../../components/iot/HardwareSimulatorD
 import { ESP32GuideModal } from '../../components/iot/ESP32GuideModal';
 import { EmergencySOSModal } from '../../components/patient/EmergencySOSModal';
 import { AuthModal } from '../../components/auth/AuthModal';
+import { initNativeBridge } from '../../lib/nativeBridge';
 
 export default function PatientLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isOnboardingChecked, setIsOnboardingChecked] = useState(false);
+  const [, setIsOnboardingChecked] = useState(false);
 
   const {
     currentUser,
-    role,
-    toggleRole,
     handleLogout,
     telemetry,
-    history,
     isSimulating,
     setIsSimulating,
     simulationMode,
@@ -49,7 +48,16 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
     openAuthModal,
     closeAuthModal,
     setAuthenticatedProfile,
+    toggleRole,
   } = useTelehealth();
+
+  // Initialize native Android Bridge (dark status bar & hardware back button listener)
+  useEffect(() => {
+    const cleanup = initNativeBridge();
+    return () => {
+      cleanup();
+    };
+  }, []);
 
   // Determine active tab from pathname
   let activeTab: PatientTab = 'overview';
@@ -58,6 +66,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
   else if (pathname.includes('/patient/appointments')) activeTab = 'appointments';
   else if (pathname.includes('/patient/prescriptions')) activeTab = 'prescriptions';
   else if (pathname.includes('/patient/records')) activeTab = 'records';
+  else if (pathname.includes('/patient/profile')) activeTab = 'profile';
 
   const handleSelectTab = (tab: string) => {
     switch (tab) {
@@ -75,6 +84,9 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
         break;
       case 'records':
         router.push('/patient/records');
+        break;
+      case 'profile':
+        router.push('/patient/profile');
         break;
       case 'overview':
       default:
@@ -98,7 +110,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
           const snap = await getDoc(doc(db, 'users', fbUser.uid));
           if (snap.exists() && isMounted) {
             const data = snap.data();
-            if (data.role === 'Patient' && data.hasCompletedOnboarding === false) {
+            if (data.role?.toLowerCase() === 'patient' && data.hasCompletedOnboarding === false) {
               router.replace('/onboarding');
               return;
             }
@@ -106,7 +118,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
         } catch (e) {
           console.warn('Patient onboarding guard check notice:', e);
         }
-      } else if (currentUser?.role === 'Patient' && currentUser?.hasCompletedOnboarding === false) {
+      } else if (currentUser?.role?.toLowerCase() === 'patient' && currentUser?.hasCompletedOnboarding === false) {
         if (isMounted) {
           router.replace('/onboarding');
           return;
@@ -127,7 +139,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
   const criticalCount = patientDirectory.filter((p) => p.status === 'Critical').length + (telemetry.status === 'critical' ? 1 : 0);
 
   // If patient has not completed onboarding, hold render while redirecting
-  if (currentUser?.role === 'Patient' && currentUser?.hasCompletedOnboarding === false) {
+  if (currentUser?.role?.toLowerCase() === 'patient' && currentUser?.hasCompletedOnboarding === false) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 text-center space-y-4">
         <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-400 animate-pulse">
@@ -140,21 +152,33 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
   }
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans selection:bg-teal-500 selection:text-white pb-20 md:pb-0">
-      <TopHeader
+    <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans selection:bg-teal-500 selection:text-white">
+      {/* Mobile Sticky Top App Bar with safe-area-top padding */}
+      <MobileTopAppBar
         currentUser={currentUser}
-        role="Patient"
-        onToggleRole={handleToggleRole}
-        onLogout={handleLogout}
-        onOpenAuth={openAuthModal}
         telemetry={telemetry}
-        isSimulating={isSimulating}
-        onToggleSimulatorDrawer={openSimulator}
-        onOpenHardwareGuide={openESP32Guide}
+        onEmergencySOS={openEmergencySOS}
         activeCriticalAlertsCount={telemetry.status === 'critical' ? 1 : 0}
       />
 
+      {/* Desktop Top Header (Hidden on Mobile) */}
+      <div className="hidden md:block">
+        <TopHeader
+          currentUser={currentUser}
+          role="Patient"
+          onToggleRole={handleToggleRole}
+          onLogout={handleLogout}
+          onOpenAuth={openAuthModal}
+          telemetry={telemetry}
+          isSimulating={isSimulating}
+          onToggleSimulatorDrawer={openSimulator}
+          onOpenHardwareGuide={openESP32Guide}
+          activeCriticalAlertsCount={telemetry.status === 'critical' ? 1 : 0}
+        />
+      </div>
+
       <div className="flex-1 flex overflow-hidden">
+        {/* Desktop Sidebar (Explicitly hidden on mobile per Android M3 guidelines) */}
         <Sidebar
           role="Patient"
           activeTab={activeTab}
@@ -165,11 +189,13 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
           activeAlertCount={criticalCount}
         />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
+        {/* Main Content Area - padded at bottom for persistent mobile bottom navigation bar */}
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto pb-24 md:pb-8">
           {children}
         </main>
       </div>
 
+      {/* Persistent Bottom Navigation Bar (Home, Vitals, Appointments, Profile) with safe-area-bottom padding */}
       <MobileNav
         role="Patient"
         activeTab={activeTab}
@@ -217,7 +243,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
         onClose={closeAuthModal}
         onSuccess={(profile) => {
           setAuthenticatedProfile(profile);
-          if (profile.role === 'Doctor') router.push('/doctor/dashboard');
+          if (profile.role?.toLowerCase() === 'doctor') router.push('/doctor/dashboard');
           else router.push('/patient/dashboard');
         }}
         initialRole="Patient"

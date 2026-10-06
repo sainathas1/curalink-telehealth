@@ -53,15 +53,16 @@ export function AuthModal({
     try {
       if (isSignUp) {
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        const enforcedRole: 'patient' | 'doctor' = role.toLowerCase() === 'doctor' ? 'doctor' : 'patient';
         const profile: UserProfile = {
           uid: userCred.user.uid,
-          fullName: fullName || (role === 'Doctor' ? 'Dr. Clinician' : 'New Patient'),
+          fullName: fullName || (enforcedRole === 'doctor' ? 'Dr. Clinician' : 'New Patient'),
           email: userCred.user.email || email,
-          role,
-          specialty: role === 'Doctor' ? specialty : undefined,
-          licenseNumber: role === 'Doctor' ? `MD-TELE-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
+          role: enforcedRole,
+          specialty: enforcedRole === 'doctor' ? specialty : undefined,
+          licenseNumber: enforcedRole === 'doctor' ? `MD-TELE-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
           isVerified: false,
-          hasCompletedOnboarding: role === 'Patient' ? false : true,
+          hasCompletedOnboarding: enforcedRole === 'patient' ? false : true,
         };
 
         try {
@@ -119,15 +120,16 @@ export function AuthModal({
     setIsLoading(true);
     try {
       const userCred = await signInWithPopup(auth, googleProvider);
+      const enforcedRole: 'patient' | 'doctor' = role.toLowerCase() === 'doctor' ? 'doctor' : 'patient';
       const profile: UserProfile = {
         uid: userCred.user.uid,
         fullName: userCred.user.displayName || 'Google Telehealth User',
         email: userCred.user.email || 'user@curalink.health',
-        role,
-        specialty: role === 'Doctor' ? 'General Tele-Medicine' : undefined,
-        licenseNumber: role === 'Doctor' ? `MD-GOOG-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
+        role: enforcedRole,
+        specialty: enforcedRole === 'doctor' ? 'General Tele-Medicine' : undefined,
+        licenseNumber: enforcedRole === 'doctor' ? `MD-GOOG-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
         isVerified: false,
-        hasCompletedOnboarding: role === 'Patient' ? false : true,
+        hasCompletedOnboarding: enforcedRole === 'patient' ? false : true,
       };
 
       try {

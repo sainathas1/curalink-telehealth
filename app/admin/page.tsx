@@ -65,6 +65,7 @@ interface PatientUser {
   fullName: string;
   email: string;
   role: string;
+  isVerified?: boolean;
   hasCompletedOnboarding: boolean;
   bloodGroup?: string;
   knownAllergies?: string;
@@ -129,9 +130,9 @@ export default function AdminMasterCommandCenterPage() {
     if (!isAuthorized) return;
 
     setDataLoading(true);
-    // Queries strictly matching the exact PascalCase role casing used during registration ('Doctor' and 'Patient')
-    const doctorsQuery = query(collection(db, 'users'), where('role', '==', 'Doctor'));
-    const patientsQuery = query(collection(db, 'users'), where('role', '==', 'Patient'));
+    // Queries strictly matching the lowercase role casing: 'doctor' and 'patient'
+    const doctorsQuery = query(collection(db, 'users'), where('role', '==', 'doctor'));
+    const patientsQuery = query(collection(db, 'users'), where('role', '==', 'patient'));
 
     let doctorsLoaded = false;
     let patientsLoaded = false;
@@ -146,7 +147,7 @@ export default function AdminMasterCommandCenterPage() {
       (snapshot) => {
         const docsList: DoctorUser[] = snapshot.docs.map((docSnap) => {
           const data = docSnap.data();
-          // Data fallback: if isVerified is missing or undefined, default to false
+          // Data fallback: if isVerified is missing or undefined, strictly evaluate as false
           const isVerified = data.isVerified === true;
           return {
             id: docSnap.id,
@@ -155,7 +156,7 @@ export default function AdminMasterCommandCenterPage() {
             email: (data.email || 'N/A').trim(),
             licenseNumber: (data.licenseNumber || data.medicalLicense || '').trim(),
             specialty: (data.specialty || 'General Tele-Medicine').trim(),
-            role: data.role || 'Doctor',
+            role: data.role || 'doctor',
             isVerified: isVerified,
             verifiedAt: data.verifiedAt,
             createdAt: data.createdAt
@@ -181,6 +182,8 @@ export default function AdminMasterCommandCenterPage() {
       (snapshot) => {
         const patsList: PatientUser[] = snapshot.docs.map((docSnap) => {
           const data = docSnap.data();
+          // Data fallback: if isVerified is missing or undefined, strictly evaluate as false
+          const isVerified = data.isVerified === true;
           const hasHardware = data.lastSyncedTemperature !== undefined || !!data.deviceModel || !!data.hardwareId;
           const deterministicHardwareId = data.hardwareId || (hasHardware ? `USB-IOT-${docSnap.id.slice(0, 8).toUpperCase()}` : undefined);
 
@@ -189,7 +192,8 @@ export default function AdminMasterCommandCenterPage() {
             uid: data.uid || docSnap.id,
             fullName: (data.fullName || data.name || data.displayName || 'Patient User').trim(),
             email: (data.email || 'N/A').trim(),
-            role: data.role || 'Patient',
+            role: data.role || 'patient',
+            isVerified: isVerified,
             hasCompletedOnboarding: data.hasCompletedOnboarding === true,
             bloodGroup: data.bloodGroup,
             knownAllergies: data.knownAllergies,
@@ -227,27 +231,28 @@ export default function AdminMasterCommandCenterPage() {
 
 
 
-  // Doctor Verification Action (Approve / Revoke Toggle)
-  const handleToggleVerification = async (doctor: DoctorUser) => {
+  // User Verification Action (Approve / Revoke Toggle)
+  const handleToggleVerification = async (user: DoctorUser | PatientUser) => {
     if (actionDoctorId) return;
-    setActionDoctorId(doctor.id);
+    setActionDoctorId(user.id);
 
-    // Fallback: If doctor.isVerified is missing or undefined, default toggle state to false (so toggle sets to true)
-    const isCurrentlyVerified = doctor.isVerified === true;
+    // Fallback: If isVerified is missing or undefined, strictly evaluate as false (so toggle sets to true)
+    const isCurrentlyVerified = user.isVerified === true;
     const newVerifiedState = !isCurrentlyVerified;
 
     try {
-      const docRef = doc(db, 'users', doctor.id);
+      const docRef = doc(db, 'users', user.id);
       await updateDoc(docRef, {
         isVerified: newVerifiedState,
         verifiedAt: newVerifiedState ? new Date().toISOString() : null,
         verifiedBy: currentUser?.email || AUTHORIZED_ADMIN_EMAIL,
       });
 
+      const rolePrefix = user.role?.toLowerCase() === 'doctor' ? 'Dr. ' : 'Patient ';
       setSuccessToast(
         newVerifiedState
-          ? `Privileges Granted: Dr. ${doctor.fullName || 'Clinician'} is now verified.`
-          : `Privileges Revoked: Dr. ${doctor.fullName || 'Clinician'} set to unverified status.`
+          ? `Privileges Granted: ${rolePrefix}${user.fullName || 'User'} is now verified.`
+          : `Privileges Revoked: ${rolePrefix}${user.fullName || 'User'} set to unverified status.`
       );
       setTimeout(() => setSuccessToast(null), 4000);
     } catch (err: any) {
@@ -271,7 +276,7 @@ export default function AdminMasterCommandCenterPage() {
         uid: demoId,
         fullName: `Dr. Candidate ${Math.floor(10 + Math.random() * 89)}`,
         email: `physician.${Math.floor(100 + Math.random() * 899)}@curalink-network.org`,
-        role: 'Doctor',
+        role: 'doctor',
         specialty: pickedSpecialty,
         licenseNumber: randomLicense,
         isVerified: false,
@@ -802,12 +807,12 @@ export default function AdminMasterCommandCenterPage() {
                             {isVerified ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Verified Active</span>
+                                <span>Verified</span>
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
                                 <Clock className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Pending Approval</span>
+                                <span>Unverified</span>
                               </span>
                             )}
                           </td>
@@ -945,13 +950,17 @@ export default function AdminMasterCommandCenterPage() {
                     <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                       <th className="py-3.5 px-6">Patient Name</th>
                       <th className="py-3.5 px-6">Email Address</th>
+                      <th className="py-3.5 px-6">Verification</th>
                       <th className="py-3.5 px-6">Medical Onboarding</th>
                       <th className="py-3.5 px-6">Hardware Status</th>
-                      <th className="py-3.5 px-6 text-right">IoT Hardware Oversight</th>
+                      <th className="py-3.5 px-6 text-right">Approve / Oversight</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
                     {filteredPatients.map((pt) => {
+                      const isActing = actionDoctorId === pt.id;
+                      // Fallback: If pt.isVerified is missing or undefined, strictly evaluate as false (Unverified)
+                      const isVerified = pt.isVerified === true;
                       const hasHardware = pt.lastSyncedTemperature !== undefined || !!pt.deviceModel || !!pt.hardwareId;
 
                       return (
@@ -997,6 +1006,21 @@ export default function AdminMasterCommandCenterPage() {
                             </div>
                           </td>
 
+                          {/* Verification Status (handle missing data: undefined/missing strictly evaluated as false) */}
+                          <td className="py-4 px-6">
+                            {isVerified ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Verified</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Unverified</span>
+                              </span>
+                            )}
+                          </td>
+
                           {/* Medical Onboarding */}
                           <td className="py-4 px-6">
                             {pt.hasCompletedOnboarding ? (
@@ -1032,16 +1056,47 @@ export default function AdminMasterCommandCenterPage() {
                             )}
                           </td>
 
-                          {/* Action: View Connected IoT Hardware ID Button */}
+                          {/* Actions: Approve / Revoke Toggle & View Connected IoT Hardware ID Button */}
                           <td className="py-4 px-6 text-right">
-                            <button
-                              onClick={() => setSelectedPatientForHardware(pt)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-teal-600/20 text-slate-200 hover:text-teal-300 border border-slate-700 hover:border-teal-500/50 font-bold text-xs transition-all cursor-pointer"
-                              title="View connected USB IoT Hardware ID and telemetry specs"
-                            >
-                              <Cpu className="w-3.5 h-3.5 text-teal-400" />
-                              <span>View IoT Hardware ID</span>
-                            </button>
+                            <div className="inline-flex items-center justify-end gap-2">
+                              {isVerified ? (
+                                <button
+                                  onClick={() => handleToggleVerification(pt)}
+                                  disabled={isActing}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
+                                  title="Revoke verification privileges"
+                                >
+                                  {isActing ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <X className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>Revoke</span>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleToggleVerification(pt)}
+                                  disabled={isActing}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-emerald-950/40 transition-all cursor-pointer disabled:opacity-50 border border-emerald-400/40"
+                                  title="Approve patient verification"
+                                >
+                                  {isActing ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  )}
+                                  <span>Approve</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setSelectedPatientForHardware(pt)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-teal-600/20 text-slate-200 hover:text-teal-300 border border-slate-700 hover:border-teal-500/50 font-bold text-xs transition-all cursor-pointer"
+                                title="View connected USB IoT Hardware ID and telemetry specs"
+                              >
+                                <Cpu className="w-3.5 h-3.5 text-teal-400" />
+                                <span>IoT Hardware</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

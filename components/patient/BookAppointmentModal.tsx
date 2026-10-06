@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Appointment } from '../../lib/types';
 import { db } from '../../lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -36,6 +36,32 @@ export interface ClinicianOption {
   avatar: string;
 }
 
+/**
+ * Generates dynamic upcoming available consultation dates starting from tomorrow.
+ * Uses native JavaScript Date objects and Intl.DateTimeFormat for clean formatting (e.g. 'Wednesday, Oct 7').
+ * Guarantees zero duplicate entries in the returned array.
+ */
+export function generateAvailableDates(count: number = 7): string[] {
+  const dates: string[] = [];
+  const baseDate = new Date();
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  for (let i = 1; i <= count; i++) {
+    const nextDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + i);
+    const formatted = formatter.format(nextDate);
+    if (!dates.includes(formatted)) {
+      dates.push(formatted);
+    }
+  }
+
+  return dates;
+}
+
 interface BookAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -61,13 +87,24 @@ export function BookAppointmentModal({
   const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // Dynamic available consultation dates (next 7 days starting from tomorrow)
+  const availableDates = useMemo(() => generateAvailableDates(7), []);
+
   // Form selections
   const [specialtyFilter, setSpecialtyFilter] = useState<string>('All');
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
-  const [date, setDate] = useState<string>('Tomorrow, Oct 5');
+  const [date, setDate] = useState<string>(() => availableDates[0] || '');
   const [timeSlot, setTimeSlot] = useState<string>('10:00 AM - 10:30 AM');
   const [visitType, setVisitType] = useState<'Video Call' | 'In-Person Consultation' | 'Routine Checkup'>('Video Call');
   const [symptoms, setSymptoms] = useState<string>('');
+
+  // Keep date selection valid and in sync with dynamically generated dates
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!availableDates.includes(date)) {
+      setDate(availableDates[0] || '');
+    }
+  }, [isOpen, availableDates, date]);
 
   // Payment states
   const [activePaymentTab, setActivePaymentTab] = useState<PaymentTab>('razorpay');
@@ -815,12 +852,13 @@ export function BookAppointmentModal({
                 <select
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-teal-500"
+                  className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-teal-500 cursor-pointer"
                 >
-                  <option value="Tomorrow, Oct 5">Tomorrow, Oct 5</option>
-                  <option value="Monday, Oct 6">Monday, Oct 6</option>
-                  <option value="Tuesday, Oct 7">Tuesday, Oct 7</option>
-                  <option value="Wednesday, Oct 8">Wednesday, Oct 8</option>
+                  {availableDates.map((dateOption) => (
+                    <option key={dateOption} value={dateOption}>
+                      {dateOption}
+                    </option>
+                  ))}
                 </select>
               </div>
 

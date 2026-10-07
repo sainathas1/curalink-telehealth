@@ -55,7 +55,7 @@ export default function PatientDashboardRoute() {
       prescriptions={prescriptions}
       records={medicalRecords}
       onNavigateTab={handleNavigateTab}
-      onJoinVideoCall={openVideoCall}
+      onJoinVideoCall={(appointment) => router.push(`/call/${appointment.id}`)}
       onEmergencySOS={openEmergencySOS}
     />
   );

@@ -52,7 +52,7 @@ export default function DoctorDashboardRoute() {
       patients={patientDirectory}
       liveTelemetry={telemetry}
       onNavigateTab={handleNavigateTab}
-      onStartVideoCall={openVideoCall}
+      onStartVideoCall={(apt) => router.push(`/call/${apt.id}`)}
       onOpenEHR={openEHR}
     />
   );

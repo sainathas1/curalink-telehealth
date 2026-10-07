@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   UserProfile,
   Appointment,
@@ -470,13 +471,14 @@ export function DoctorDashboard({
                       <Stethoscope className="w-4 h-4" />
                     </button>
 
-                    <button
+                    <Link
+                      href={`/call/${apt.id}`}
                       onClick={() => onStartVideoCall(apt)}
                       className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-2"
                     >
                       <Video className="w-4 h-4" />
-                      <span>Start Video Call</span>
-                    </button>
+                      <span>Join Call</span>
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -716,7 +718,7 @@ export function DoctorDashboard({
                 className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Video className="w-4 h-4" />
-                <span>Start Video Call</span>
+                <span>Video Consult</span>
               </button>
             </div>
           </div>

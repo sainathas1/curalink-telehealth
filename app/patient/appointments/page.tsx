@@ -1,15 +1,15 @@
 'use client';
 
-import React from 'react';
+import { useRouter } from 'next/navigation';
 import { useTelehealth } from '../../../context/TelehealthContext';
 import { AppointmentsList } from '../../../components/patient/AppointmentsList';
 
 export default function PatientAppointmentsRoute() {
+  const router = useRouter();
   const {
     currentUser,
     patientAppointments,
     addAppointment,
-    openVideoCall,
   } = useTelehealth();
 
   const patientName = currentUser?.fullName || 'Patient';
@@ -18,7 +18,7 @@ export default function PatientAppointmentsRoute() {
     <AppointmentsList
       appointments={patientAppointments}
       onBookAppointment={addAppointment}
-      onJoinVideoCall={openVideoCall}
+      onJoinVideoCall={(appointment) => router.push(`/call/${appointment.id}`)}
       patientName={patientName}
       patientId={currentUser?.uid || 'patient_user'}
     />

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   UserProfile,
   LiveTelemetryPayload,
@@ -170,13 +171,14 @@ export function PatientDashboard({
 
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
             {nextAppointment && nextAppointment.type === 'Video Call' ? (
-              <button
+              <Link
+                href={`/call/${nextAppointment.id}`}
                 onClick={() => onJoinVideoCall(nextAppointment)}
                 className="w-full py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               >
                 <Video className="w-3.5 h-3.5" />
-                <span>Start Video Visit</span>
-              </button>
+                <span>Join Call</span>
+              </Link>
             ) : (
               <button
                 onClick={() => onNavigateTab('appointments')}

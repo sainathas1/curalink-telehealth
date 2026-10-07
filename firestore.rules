@@ -53,5 +53,15 @@ service cloud.firestore {
     match /telemetry/{telemetryId} {
       allow read, write: if request.auth != null && (request.auth.uid == telemetryId || request.auth.token.email == 'sainathas8788@gmail.com');
     }
+
+    match /appointments/{appointmentId} {
+      allow create: if isSignedIn();
+      allow read, update: if isSignedIn() && (
+        request.auth.uid == resource.data.doctorId ||
+        request.auth.uid == resource.data.patientId ||
+        isAdmin()
+      );
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.patientId);
+    }
   }
 }

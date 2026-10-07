@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { Appointment } from '../../lib/types';
 import { BookAppointmentModal } from './BookAppointmentModal';
 import {
@@ -113,13 +114,14 @@ export function AppointmentsList({
 
             <div className="shrink-0 w-full sm:w-auto">
               {nextAppointment.type === 'Video Call' ? (
-                <button
+                <Link
+                  href={`/call/${nextAppointment.id}`}
                   onClick={() => onJoinVideoCall(nextAppointment)}
                   className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-white font-bold text-xs shadow-lg shadow-teal-900/50 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 group"
                 >
                   <Video className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  <span>Start Video Visit</span>
-                </button>
+                  <span>Join Call</span>
+                </Link>
               ) : (
                 <div className="px-4 py-3 rounded-2xl bg-white/10 text-xs font-semibold text-slate-200 flex items-center justify-center gap-2">
                   <MapPin className="w-4 h-4 text-teal-400" />
@@ -243,13 +245,14 @@ export function AppointmentsList({
                   </div>
 
                   {apt.status === 'Upcoming' && apt.type === 'Video Call' && (
-                    <button
+                    <Link
+                      href={`/call/${apt.id}`}
                       onClick={() => onJoinVideoCall(apt)}
                       className="w-full sm:w-auto px-4 py-2 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all m3-pressable cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <Video className="w-3.5 h-3.5" />
-                      <span>Start Video Visit</span>
-                    </button>
+                      <span>Join Call</span>
+                    </Link>
                   )}
                 </div>
               </div>

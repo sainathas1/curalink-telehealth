@@ -68,9 +68,12 @@ export interface Appointment {
   date: string;
   time: string;
   type: 'Video Call' | 'In-Person Consultation' | 'Routine Checkup';
-  status: 'Upcoming' | 'In Progress' | 'Completed' | 'Cancelled';
+  status: 'Upcoming' | 'In Progress' | 'Completed' | 'Cancelled' | 'scheduled' | string;
   symptoms: string;
   meetingLink?: string;
+  patientEmail?: string;
+  patientPhone?: string;
+  emergencyContact?: string;
   bloodGroup?: string;
   knownAllergies?: string;
   chronicConditions?: string[];
@@ -79,6 +82,7 @@ export interface Appointment {
   paymentAmount?: number;
   paymentTxnId?: string;
   paymentMethod?: string;
+  createdAt?: string;
 }
 
 export interface Prescription {
@@ -129,6 +133,9 @@ export interface PatientDirectoryItem {
   knownAllergies?: string;
   chronicConditions?: string[];
   currentMedications?: string;
+  email?: string;
+  phoneNumber?: string;
+  emergencyContact?: string;
   hasCompletedOnboarding?: boolean;
   lastSyncedTemperature?: number;
   lastSyncedAt?: string;

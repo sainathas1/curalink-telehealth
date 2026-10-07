@@ -213,7 +213,7 @@ export function PatientDirectory({
                                 </span>
                               ))
                             ) : (
-                              <span className="text-[11px] text-slate-500">No chronic illnesses</span>
+                              <span className="text-[11px] text-slate-500">No data provided</span>
                             )}
                           </div>
 
@@ -226,7 +226,7 @@ export function PatientDirectory({
                               </span>
                             </div>
                           ) : (
-                            <p className="text-[10px] text-slate-400">No known drug allergies</p>
+                            <p className="text-[10px] text-slate-400">Allergies: No data provided</p>
                           )}
                         </div>
                       </td>
@@ -446,7 +446,7 @@ export function PatientDirectory({
                   </div>
                 </div>
                 <span className="text-base font-black font-mono text-rose-700 bg-white px-3 py-1 rounded-xl border border-rose-200 shadow-xs">
-                  {selectedPatient.bloodGroup || 'Not Reported'}
+                  {selectedPatient.bloodGroup && selectedPatient.bloodGroup !== 'Not specified' ? selectedPatient.bloodGroup : 'No data provided'}
                 </span>
               </div>
 
@@ -457,7 +457,7 @@ export function PatientDirectory({
                   <span>Known Drug & Environmental Allergies</span>
                 </div>
                 <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-amber-200/60 font-medium">
-                  {selectedPatient.knownAllergies || 'None reported by patient.'}
+                  {selectedPatient.knownAllergies && selectedPatient.knownAllergies.toLowerCase() !== 'none' && selectedPatient.knownAllergies.toLowerCase() !== 'none reported' ? selectedPatient.knownAllergies : 'No data provided'}
                 </p>
               </div>
 
@@ -468,7 +468,7 @@ export function PatientDirectory({
                   <span>Diagnosed Chronic Conditions</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {selectedPatient.chronicConditions && selectedPatient.chronicConditions.length > 0 ? (
+                  {selectedPatient.chronicConditions && selectedPatient.chronicConditions.length > 0 && selectedPatient.chronicConditions[0] !== 'None' ? (
                     selectedPatient.chronicConditions.map((cond) => (
                       <span
                         key={cond}
@@ -482,7 +482,7 @@ export function PatientDirectory({
                       </span>
                     ))
                   ) : (
-                    <span className="text-slate-500">None reported</span>
+                    <span className="text-slate-500 font-medium">No data provided</span>
                   )}
                 </div>
               </div>
@@ -494,7 +494,7 @@ export function PatientDirectory({
                   <span>Current Medications & Dosages</span>
                 </div>
                 <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-slate-200 font-mono whitespace-pre-wrap">
-                  {selectedPatient.currentMedications || 'None currently prescribed or reported.'}
+                  {selectedPatient.currentMedications && selectedPatient.currentMedications.toLowerCase() !== 'none' && selectedPatient.currentMedications.toLowerCase() !== 'none reported' ? selectedPatient.currentMedications : 'No data provided'}
                 </p>
               </div>
             </div>

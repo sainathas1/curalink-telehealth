@@ -10,7 +10,8 @@ import {
 } from '../../lib/types';
 import { DoctorTab } from '../navbar/Sidebar';
 import { db } from '../../lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { useTelehealth } from '../../context/TelehealthContext';
 import {
   Video,
   Users,
@@ -60,9 +61,97 @@ export function DoctorDashboard({
   onStartVideoCall,
   onOpenEHR,
 }: DoctorDashboardProps) {
+  const { currentUser } = useTelehealth();
   const [selectedPatient, setSelectedPatient] = useState<PatientDirectoryItem | null>(null);
   const [liveIoTData, setLiveIoTData] = useState<LivePatientIoTData | null>(null);
   const [isLiveListening, setIsLiveListening] = useState(false);
+  const [liveAppointments, setLiveAppointments] = useState<Appointment[]>([]);
+  const [patientProfiles, setPatientProfiles] = useState<Record<string, any>>({});
+  const [hasFetchedLiveApts, setHasFetchedLiveApts] = useState(false);
+
+  // Doctor Read Fix:
+  // Fetch appointments using ONLY this simple query: query(collection(db, 'appointments'), where('doctorId', '==', currentUser.uid))
+  // CRITICAL: Do NOT use orderBy() in this Firestore query to prevent composite index errors.
+  // Sort the appointments by date in the frontend JavaScript (.sort()) instead.
+  useEffect(() => {
+    const doctorUid = currentUser?.uid || doctor?.uid;
+    if (!doctorUid) return;
+
+    try {
+      const q = query(
+        collection(db, 'appointments'),
+        where('doctorId', '==', doctorUid)
+      );
+
+      const unsubscribe = onSnapshot(
+        q,
+        async (snapshot) => {
+          const data: Appointment[] = [];
+          snapshot.forEach((docSnap) => {
+            data.push({ ...docSnap.data(), id: docSnap.id } as Appointment);
+          });
+
+          // Mandatory console.log as required by user prompt
+          console.log("Fetched Appointments:", data);
+
+          // Frontend JavaScript sort by date/time
+          data.sort((a, b) => {
+            const timeA = new Date(`${a.date || ''} ${a.time?.split(' - ')[0] || ''}`).getTime();
+            const timeB = new Date(`${b.date || ''} ${b.time?.split(' - ')[0] || ''}`).getTime();
+            if (!isNaN(timeA) && !isNaN(timeB)) {
+              return timeA - timeB;
+            }
+            return (b.id || '').localeCompare(a.id || '');
+          });
+
+          setLiveAppointments(data);
+          setHasFetchedLiveApts(true);
+
+          // Doctor Portal Patient Fetching:
+          // Use Promise.all to fetch getDoc(doc(db, 'users', appointment.patientId)) for each unique patient
+          const uniquePatientIds = Array.from(
+            new Set(data.map((apt) => apt.patientId).filter(Boolean))
+          );
+
+          if (uniquePatientIds.length > 0) {
+            try {
+              const patientDocs = await Promise.all(
+                uniquePatientIds.map((pId) => getDoc(doc(db, 'users', pId)))
+              );
+              const profiles: Record<string, any> = {};
+              patientDocs.forEach((pDoc) => {
+                if (pDoc.exists()) {
+                  profiles[pDoc.id] = pDoc.data();
+                }
+              });
+              setPatientProfiles((prev) => ({ ...prev, ...profiles }));
+            } catch (pErr) {
+              console.warn('Error fetching patient user documents via Promise.all:', pErr);
+            }
+          }
+        },
+        (error) => {
+          console.warn('Doctor appointments query onSnapshot notice:', error);
+        }
+      );
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('Error setting up doctor appointments query:', err);
+    }
+  }, [currentUser?.uid, doctor?.uid]);
+
+  // Fetch full medical history when selectedPatient opens if not already cached
+  useEffect(() => {
+    if (!selectedPatient?.id || patientProfiles[selectedPatient.id]) return;
+    getDoc(doc(db, 'users', selectedPatient.id))
+      .then((docSnap) => {
+        if (docSnap.exists()) {
+          setPatientProfiles((prev) => ({ ...prev, [docSnap.id]: docSnap.data() }));
+        }
+      })
+      .catch((err) => console.warn('Error fetching selected patient profile:', err));
+  }, [selectedPatient?.id, patientProfiles]);
 
   useEffect(() => {
     if (!selectedPatient?.id) {
@@ -145,8 +234,118 @@ export function DoctorDashboard({
     }
   }, [doctor?.isVerified]);
 
+  const displayedAppointments = hasFetchedLiveApts
+    ? liveAppointments
+    : (appointmentsQueue && appointmentsQueue.length > 0 ? appointmentsQueue : liveAppointments);
+  const nextVisit = displayedAppointments[0];
   const criticalCount = patients.filter((p) => p.status === 'Critical').length;
-  const nextVisit = appointmentsQueue[0];
+
+  // Build a unique patients roster from appointments + assigned directory
+  const uniquePatientsList: PatientDirectoryItem[] = React.useMemo(() => {
+    const list: PatientDirectoryItem[] = [];
+    const seenIds = new Set<string>();
+
+    // 1. From appointments with denormalized & fetched profile data
+    displayedAppointments.forEach((apt) => {
+      const pid = apt.patientId || `apt_pt_${apt.patientName}`;
+      if (seenIds.has(pid)) return;
+      seenIds.add(pid);
+
+      const profile = patientProfiles[apt.patientId] || {};
+      const matched = patients.find((p) => p.id === apt.patientId || p.name.toLowerCase() === apt.patientName.toLowerCase());
+
+      const bloodGroupRaw = apt.bloodGroup || profile.bloodGroup || profile.bloodType || matched?.bloodGroup;
+      const bloodGroup = (bloodGroupRaw && bloodGroupRaw !== 'Not specified') ? bloodGroupRaw : 'No data provided';
+
+      const rawAllergies = apt.knownAllergies || profile.knownAllergies || (profile.allergies ? profile.allergies.join(', ') : matched?.knownAllergies);
+      const allergies = (rawAllergies && rawAllergies.trim().length > 0 && rawAllergies.toLowerCase() !== 'none' && rawAllergies.toLowerCase() !== 'none reported')
+        ? rawAllergies
+        : 'No data provided';
+
+      const rawChronic = (apt.chronicConditions && apt.chronicConditions.length > 0 && apt.chronicConditions[0] !== 'None')
+        ? apt.chronicConditions
+        : (profile.chronicConditions && profile.chronicConditions.length > 0 && profile.chronicConditions[0] !== 'None')
+          ? profile.chronicConditions
+          : (matched?.chronicConditions && matched.chronicConditions.length > 0 && matched.chronicConditions[0] !== 'None')
+            ? matched.chronicConditions
+            : [];
+      const chronic = rawChronic.length > 0 ? rawChronic : ['No data provided'];
+
+      const currentMedications = apt.currentMedications || profile.currentMedications || matched?.currentMedications || 'No data provided';
+      const patientEmail = apt.patientEmail || profile.email || matched?.email || 'No data provided';
+      const patientPhone = apt.patientPhone || profile.phoneNumber || matched?.phoneNumber || 'No data provided';
+      const emergencyContact = apt.emergencyContact || profile.emergencyContact || matched?.emergencyContact || 'No data provided';
+
+      list.push({
+        id: apt.patientId,
+        name: apt.patientName,
+        age: profile.age || matched?.age || 35,
+        gender: profile.gender || matched?.gender || 'Other',
+        condition: apt.symptoms || profile.condition || matched?.condition || 'No data provided',
+        status: matched?.status || 'Stable',
+        roomOrBed: profile.roomOrBed || matched?.roomOrBed || 'Remote Telehealth',
+        assignedDoctor: doctor.fullName || 'Attending Clinician',
+        lastVisit: apt.date || matched?.lastVisit || 'Initial Intake',
+        nextAppointment: apt.time || matched?.nextAppointment,
+        bloodGroup,
+        bloodType: bloodGroup,
+        allergies: allergies !== 'No data provided' ? [allergies] : [],
+        knownAllergies: allergies,
+        chronicConditions: chronic,
+        currentMedications,
+        email: patientEmail,
+        phoneNumber: patientPhone,
+        emergencyContact,
+        hasCompletedOnboarding: profile.hasCompletedOnboarding ?? matched?.hasCompletedOnboarding ?? false,
+        lastSyncedTemperature: profile.lastSyncedTemperature ?? matched?.lastSyncedTemperature,
+        lastSyncedAt: profile.lastSyncedAt ?? matched?.lastSyncedAt,
+        temperatureStatus: profile.temperatureStatus ?? matched?.temperatureStatus,
+        deviceModel: profile.deviceModel ?? matched?.deviceModel,
+        currentVitals: matched?.currentVitals || {
+          heartRate: profile.currentVitals?.heartRate || 72,
+          spo2: profile.currentVitals?.spo2 || 98,
+          temperature: profile.lastSyncedTemperature || 37.0,
+          bloodPressure: profile.currentVitals?.bloodPressure || '120/80',
+        },
+      });
+    });
+
+    // 2. Also append any patients from directory not yet in the list
+    patients.forEach((p) => {
+      if (seenIds.has(p.id)) return;
+      seenIds.add(p.id);
+
+      const profile = patientProfiles[p.id] || {};
+      const bloodGroupRaw = p.bloodGroup || profile.bloodGroup || profile.bloodType;
+      const bloodGroup = (bloodGroupRaw && bloodGroupRaw !== 'Not specified') ? bloodGroupRaw : 'No data provided';
+
+      const rawAllergies = p.knownAllergies || profile.knownAllergies || (profile.allergies ? profile.allergies.join(', ') : undefined);
+      const allergies = (rawAllergies && rawAllergies.trim().length > 0 && rawAllergies.toLowerCase() !== 'none' && rawAllergies.toLowerCase() !== 'none reported')
+        ? rawAllergies
+        : 'No data provided';
+
+      const rawChronic = (p.chronicConditions && p.chronicConditions.length > 0 && p.chronicConditions[0] !== 'None')
+        ? p.chronicConditions
+        : (profile.chronicConditions && profile.chronicConditions.length > 0 && profile.chronicConditions[0] !== 'None')
+          ? profile.chronicConditions
+          : [];
+      const chronic = rawChronic.length > 0 ? rawChronic : ['No data provided'];
+
+      list.push({
+        ...p,
+        bloodGroup,
+        bloodType: bloodGroup,
+        knownAllergies: allergies,
+        chronicConditions: chronic,
+        currentMedications: p.currentMedications || profile.currentMedications || 'No data provided',
+        email: p.email || profile.email || 'No data provided',
+        phoneNumber: p.phoneNumber || profile.phoneNumber || 'No data provided',
+        emergencyContact: p.emergencyContact || profile.emergencyContact || 'No data provided',
+      });
+    });
+
+    return list;
+  }, [displayedAppointments, patients, patientProfiles, doctor.fullName]);
 
   return (
     <div className="space-y-6">
@@ -267,7 +466,7 @@ export function DoctorDashboard({
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-slate-900 font-mono">
-              {appointmentsQueue.length}
+              {displayedAppointments.length}
             </span>
             <span className="text-xs text-slate-500 font-medium">Scheduled</span>
           </div>
@@ -339,7 +538,7 @@ export function DoctorDashboard({
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 font-mono">{appointmentsQueue.length}</span>
+            <span className="text-3xl font-black text-slate-900 font-mono">{displayedAppointments.length}</span>
             <span className="text-xs text-slate-500 font-medium">Pending EHR Notes</span>
           </div>
           <p className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500 font-mono">
@@ -356,11 +555,11 @@ export function DoctorDashboard({
             <p className="text-xs text-slate-500">Upcoming virtual consultations and clinical triage slots</p>
           </div>
           <span className="text-xs font-bold text-teal-700 bg-teal-50 px-3 py-1 rounded-full border border-teal-200/60">
-            {appointmentsQueue.length} Visits Scheduled
+            {displayedAppointments.length} Visits Scheduled
           </span>
         </div>
 
-        {appointmentsQueue.length === 0 ? (
+        {displayedAppointments.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center">
             <Calendar className="w-10 h-10 text-slate-300 mb-2 stroke-1" />
             <p className="font-bold text-slate-700 text-sm">No upcoming appointments</p>
@@ -368,14 +567,33 @@ export function DoctorDashboard({
           </div>
         ) : (
           <div className="space-y-3">
-            {appointmentsQueue.map((apt, index) => {
+            {displayedAppointments.map((apt, index) => {
+              const profile = patientProfiles[apt.patientId] || {};
               const matchedPt = patients.find(
                 (p) => p.id === apt.patientId || p.name.toLowerCase() === apt.patientName.toLowerCase()
               );
-              const bloodGroup = apt.bloodGroup || matchedPt?.bloodGroup;
-              const allergies = apt.knownAllergies || matchedPt?.knownAllergies;
-              const chronic = apt.chronicConditions || matchedPt?.chronicConditions || [];
-              const hasAllergies = allergies && allergies.toLowerCase() !== 'none' && allergies.toLowerCase() !== 'none reported';
+
+              // Graceful Fallbacks: If patient medical data is missing, display 'No data provided'
+              const bloodGroupRaw = apt.bloodGroup || profile.bloodGroup || profile.bloodType || matchedPt?.bloodGroup;
+              const bloodGroup = (bloodGroupRaw && bloodGroupRaw !== 'Not specified') ? bloodGroupRaw : 'No data provided';
+
+              const rawAllergies = apt.knownAllergies || profile.knownAllergies || (profile.allergies ? profile.allergies.join(', ') : matchedPt?.knownAllergies);
+              const allergies = (rawAllergies && rawAllergies.trim().length > 0 && rawAllergies.toLowerCase() !== 'none' && rawAllergies.toLowerCase() !== 'none reported')
+                ? rawAllergies
+                : 'No data provided';
+
+              const rawChronic = (apt.chronicConditions && apt.chronicConditions.length > 0 && apt.chronicConditions[0] !== 'None')
+                ? apt.chronicConditions
+                : (profile.chronicConditions && profile.chronicConditions.length > 0 && profile.chronicConditions[0] !== 'None')
+                  ? profile.chronicConditions
+                  : (matchedPt?.chronicConditions && matchedPt.chronicConditions.length > 0 && matchedPt.chronicConditions[0] !== 'None')
+                    ? matchedPt.chronicConditions
+                    : [];
+              const chronic = rawChronic.length > 0 ? rawChronic : ['No data provided'];
+
+              const chiefSymptoms = apt.symptoms || profile.condition || matchedPt?.condition || 'No data provided';
+              const patientEmail = apt.patientEmail || profile.email || matchedPt?.email || 'No data provided';
+              const patientPhone = apt.patientPhone || profile.phoneNumber || matchedPt?.phoneNumber || 'No data provided';
 
               return (
               <div
@@ -400,16 +618,20 @@ export function DoctorDashboard({
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                         {apt.type}
                       </span>
-                      {bloodGroup && bloodGroup !== 'Not specified' && (
+                      {bloodGroup !== 'No data provided' ? (
                         <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold font-mono">
                           <Droplet className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
                           {bloodGroup}
                         </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-slate-50 text-slate-500 border border-slate-200 text-[10px]">
+                          Blood Group: No data provided
+                        </span>
                       )}
-                      {matchedPt?.lastSyncedTemperature !== undefined && (
+                      {(matchedPt?.lastSyncedTemperature !== undefined || profile.lastSyncedTemperature !== undefined) && (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold font-mono">
                           <Thermometer className="w-2.5 h-2.5 text-teal-600" />
-                          <span>{matchedPt.lastSyncedTemperature.toFixed(1)}°C (IoT)</span>
+                          <span>{(matchedPt?.lastSyncedTemperature ?? profile.lastSyncedTemperature)?.toFixed(1)}°C (IoT)</span>
                         </span>
                       )}
                       {index === 0 && (
@@ -420,23 +642,31 @@ export function DoctorDashboard({
                     </div>
 
                     <p className="text-xs text-slate-600 mt-1 max-w-xl">
-                      <strong className="text-slate-800">Chief Symptoms:</strong> {apt.symptoms}
+                      <strong className="text-slate-800">Chief Symptoms:</strong> {chiefSymptoms}
                     </p>
 
-                    {/* Medical History Badges */}
+                    {/* Medical History Badges with Graceful Fallbacks */}
                     <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                      {hasAllergies && (
+                      {allergies !== 'No data provided' ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-semibold">
                           <AlertTriangle className="w-3 h-3 text-amber-600" />
                           <span>Allergy: {allergies}</span>
                         </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 text-slate-500 border border-slate-200 text-[10px]">
+                          <span>Allergies: No data provided</span>
+                        </span>
                       )}
-                      {chronic.filter(c => c !== 'None').map((c) => (
+                      {chronic.map((c: string) => (
                         <span
                           key={c}
-                          className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-medium"
+                          className={`px-2 py-0.5 rounded-md border text-[10px] ${
+                            c === 'No data provided'
+                              ? 'bg-slate-50 text-slate-500 border-slate-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200 font-medium'
+                          }`}
                         >
-                          {c}
+                          {c === 'No data provided' ? 'Conditions: No data provided' : c}
                         </span>
                       ))}
                     </div>
@@ -453,15 +683,46 @@ export function DoctorDashboard({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {matchedPt && (
-                      <button
-                        onClick={() => setSelectedPatient(matchedPt)}
-                        className="p-2 rounded-xl border border-teal-200 hover:bg-teal-50 text-teal-700 transition-all cursor-pointer"
-                        title="Inspect Patient & IoT Vitals"
-                      >
-                        <ClipboardList className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => {
+                        const targetPt: PatientDirectoryItem = matchedPt || {
+                          id: apt.patientId,
+                          name: apt.patientName,
+                          age: profile.age || 35,
+                          gender: profile.gender || 'Other',
+                          condition: chiefSymptoms,
+                          status: 'Stable',
+                          roomOrBed: profile.roomOrBed || 'Remote Telehealth',
+                          assignedDoctor: doctor.fullName || 'Attending Clinician',
+                          lastVisit: apt.date,
+                          nextAppointment: apt.time,
+                          bloodGroup,
+                          bloodType: bloodGroup,
+                          knownAllergies: allergies,
+                          chronicConditions: chronic,
+                          currentMedications: apt.currentMedications || profile.currentMedications || 'No data provided',
+                          email: patientEmail,
+                          phoneNumber: patientPhone,
+                          emergencyContact: apt.emergencyContact || profile.emergencyContact || 'No data provided',
+                          hasCompletedOnboarding: profile.hasCompletedOnboarding ?? false,
+                          lastSyncedTemperature: profile.lastSyncedTemperature,
+                          lastSyncedAt: profile.lastSyncedAt,
+                          temperatureStatus: profile.temperatureStatus,
+                          deviceModel: profile.deviceModel,
+                          currentVitals: {
+                            heartRate: profile.currentVitals?.heartRate || 72,
+                            spo2: profile.currentVitals?.spo2 || 98,
+                            temperature: profile.lastSyncedTemperature || 37.0,
+                            bloodPressure: profile.currentVitals?.bloodPressure || '120/80',
+                          },
+                        };
+                        setSelectedPatient(targetPt);
+                      }}
+                      className="p-2 rounded-xl border border-teal-200 hover:bg-teal-50 text-teal-700 transition-all cursor-pointer"
+                      title="Inspect Patient & IoT Vitals"
+                    >
+                      <ClipboardList className="w-4 h-4" />
+                    </button>
 
                     <button
                       onClick={() => onOpenEHR(apt.patientName)}
@@ -484,6 +745,145 @@ export function DoctorDashboard({
               </div>
             );
           })}
+          </div>
+        )}
+      </div>
+
+      {/* My Patients - Unique Consultation Roster */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">My Patients</h3>
+            <p className="text-xs text-slate-500">Active roster of assigned and scheduled telehealth patients</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-teal-700 bg-teal-50 px-3 py-1 rounded-full border border-teal-200/60">
+              {uniquePatientsList.length} Registered Patients
+            </span>
+            <button
+              onClick={() => onNavigateTab('patient-directory')}
+              className="text-xs text-teal-600 hover:text-teal-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>View Full Directory</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {uniquePatientsList.length === 0 ? (
+          <div className="py-10 text-center text-xs text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center">
+            <Users className="w-10 h-10 text-slate-300 mb-2 stroke-1" />
+            <p className="font-bold text-slate-700 text-sm">No patients currently on record</p>
+            <p className="text-slate-400 mt-1 max-w-sm">Patient records will appear here as appointments are scheduled or assigned.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {uniquePatientsList.map((pt) => {
+              const hasAllergies = pt.knownAllergies && pt.knownAllergies !== 'No data provided' && pt.knownAllergies.toLowerCase() !== 'none';
+              const chronicList = pt.chronicConditions && pt.chronicConditions.length > 0 && pt.chronicConditions[0] !== 'None'
+                ? pt.chronicConditions
+                : ['No data provided'];
+
+              return (
+                <div
+                  key={pt.id}
+                  className="p-4 rounded-2xl border border-slate-200/80 hover:border-teal-300 hover:shadow-xs transition-all bg-white flex flex-col justify-between gap-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-800 font-bold flex items-center justify-center shrink-0 border border-teal-100">
+                      {pt.name
+                        .split(' ')
+                        .map((n) => n[0])
+                        .join('')}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="text-sm font-bold text-slate-900 truncate">{pt.name}</h4>
+                        {pt.bloodGroup && pt.bloodGroup !== 'No data provided' && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold font-mono shrink-0">
+                            <Droplet className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
+                            {pt.bloodGroup}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                        {pt.email || 'No data provided'} • {pt.gender} • {pt.roomOrBed || 'Remote Home-Care'}
+                      </p>
+
+                      {/* Medical History Badges with Graceful Fallbacks */}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        {hasAllergies ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-semibold">
+                            <AlertTriangle className="w-3 h-3 text-amber-600" />
+                            <span>Allergy: {pt.knownAllergies}</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 text-slate-500 border border-slate-200 text-[10px]">
+                            <span>Allergies: No data provided</span>
+                          </span>
+                        )}
+
+                        {chronicList.map((c: string) => (
+                          <span
+                            key={c}
+                            className={`px-2 py-0.5 rounded-md border text-[10px] ${
+                              c === 'No data provided'
+                                ? 'bg-slate-50 text-slate-500 border-slate-200'
+                                : 'bg-slate-100 text-slate-700 border-slate-200 font-medium'
+                            }`}
+                          >
+                            {c === 'No data provided' ? 'Conditions: No data provided' : c}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                    <span className="text-[11px] text-slate-500">
+                      Intake: <strong className={pt.hasCompletedOnboarding ? 'text-emerald-700' : 'text-amber-700'}>{pt.hasCompletedOnboarding ? 'Complete' : 'Pending Intake'}</strong>
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setSelectedPatient(pt)}
+                        className="px-2.5 py-1.5 rounded-lg border border-teal-200 hover:bg-teal-50 text-teal-700 font-semibold text-[11px] transition-all flex items-center gap-1 cursor-pointer"
+                        title="View Medical Intake"
+                      >
+                        <ClipboardList className="w-3.5 h-3.5" />
+                        <span>History</span>
+                      </button>
+
+                      <button
+                        onClick={() => onOpenEHR(pt.name)}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold text-[11px] transition-all flex items-center gap-1 cursor-pointer"
+                        title="Open EHR & Digital Rx"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-teal-600" />
+                        <span>Rx</span>
+                      </button>
+
+                      {/* Video Call button routes to /call/[appointmentId] */}
+                      {(() => {
+                        const matchedApt = displayedAppointments.find((a) => a.patientId === pt.id || a.patientName === pt.name);
+                        const targetCallUrl = matchedApt ? `/call/${matchedApt.id}` : `/call/consult-${pt.id.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                        return (
+                          <Link
+                            href={targetCallUrl}
+                            className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-[11px] transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                          >
+                            <Video className="w-3.5 h-3.5" />
+                            <span>Call</span>
+                          </Link>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -626,7 +1026,11 @@ export function DoctorDashboard({
                   </div>
                 </div>
                 <span className="text-base font-black font-mono text-rose-700 bg-white px-3 py-1 rounded-xl border border-rose-200 shadow-xs">
-                  {selectedPatient.bloodGroup || 'Not Reported'}
+                  {selectedPatient.bloodGroup && selectedPatient.bloodGroup !== 'Not specified'
+                    ? selectedPatient.bloodGroup
+                    : patientProfiles[selectedPatient.id]?.bloodGroup && patientProfiles[selectedPatient.id]?.bloodGroup !== 'Not specified'
+                      ? patientProfiles[selectedPatient.id]?.bloodGroup
+                      : 'No data provided'}
                 </span>
               </div>
 
@@ -637,7 +1041,13 @@ export function DoctorDashboard({
                   <span>Known Drug & Environmental Allergies</span>
                 </div>
                 <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-amber-200/60 font-medium">
-                  {selectedPatient.knownAllergies || 'None reported by patient.'}
+                  {selectedPatient.knownAllergies && selectedPatient.knownAllergies.toLowerCase() !== 'none reported' && selectedPatient.knownAllergies.toLowerCase() !== 'none'
+                    ? selectedPatient.knownAllergies
+                    : patientProfiles[selectedPatient.id]?.knownAllergies && patientProfiles[selectedPatient.id]?.knownAllergies.toLowerCase() !== 'none'
+                      ? patientProfiles[selectedPatient.id]?.knownAllergies
+                      : (patientProfiles[selectedPatient.id]?.allergies && patientProfiles[selectedPatient.id].allergies.length > 0)
+                        ? patientProfiles[selectedPatient.id].allergies.join(', ')
+                        : 'No data provided'}
                 </p>
               </div>
 
@@ -648,8 +1058,12 @@ export function DoctorDashboard({
                   <span>Diagnosed Chronic Conditions</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {selectedPatient.chronicConditions && selectedPatient.chronicConditions.length > 0 ? (
-                    selectedPatient.chronicConditions.map((cond) => (
+                  {((selectedPatient.chronicConditions && selectedPatient.chronicConditions.length > 0 && selectedPatient.chronicConditions[0] !== 'None' && selectedPatient.chronicConditions[0] !== 'No data provided') ||
+                    (patientProfiles[selectedPatient.id]?.chronicConditions && patientProfiles[selectedPatient.id]?.chronicConditions.length > 0 && patientProfiles[selectedPatient.id]?.chronicConditions[0] !== 'None')) ? (
+                    ((selectedPatient.chronicConditions && selectedPatient.chronicConditions.length > 0 && selectedPatient.chronicConditions[0] !== 'None' && selectedPatient.chronicConditions[0] !== 'No data provided')
+                      ? selectedPatient.chronicConditions
+                      : patientProfiles[selectedPatient.id].chronicConditions
+                    ).map((cond: string) => (
                       <span
                         key={cond}
                         className={`px-3 py-1 rounded-xl text-xs font-bold border ${
@@ -662,7 +1076,7 @@ export function DoctorDashboard({
                       </span>
                     ))
                   ) : (
-                    <span className="text-slate-500">None reported</span>
+                    <span className="text-slate-500 font-medium">No data provided</span>
                   )}
                 </div>
               </div>
@@ -674,7 +1088,11 @@ export function DoctorDashboard({
                   <span>Current Medications & Dosages</span>
                 </div>
                 <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-slate-200 font-mono whitespace-pre-wrap">
-                  {selectedPatient.currentMedications || 'None currently prescribed or reported.'}
+                  {selectedPatient.currentMedications && selectedPatient.currentMedications.toLowerCase() !== 'none reported' && selectedPatient.currentMedications.toLowerCase() !== 'none'
+                    ? selectedPatient.currentMedications
+                    : patientProfiles[selectedPatient.id]?.currentMedications && patientProfiles[selectedPatient.id]?.currentMedications.toLowerCase() !== 'none'
+                      ? patientProfiles[selectedPatient.id]?.currentMedications
+                      : 'No data provided'}
                 </p>
               </div>
             </div>
@@ -695,23 +1113,27 @@ export function DoctorDashboard({
 
               <button
                 onClick={() => {
-                  const matchedApt = appointmentsQueue.find((a) => a.patientId === selectedPatient.id || a.patientName === selectedPatient.name);
+                  const matchedApt = displayedAppointments.find((a) => a.patientId === selectedPatient.id || a.patientName === selectedPatient.name);
                   setSelectedPatient(null);
                   if (matchedApt) {
                     onStartVideoCall(matchedApt);
                   } else {
+                    const fallbackRoomId = `consult-${selectedPatient.id.replace(/[^a-zA-Z0-9]/g, '-')}`;
                     onStartVideoCall({
-                      id: `apt_quick_${Date.now()}`,
+                      id: fallbackRoomId,
                       patientId: selectedPatient.id,
                       patientName: selectedPatient.name,
+                      patientEmail: selectedPatient.email || 'No data provided',
+                      patientPhone: selectedPatient.phoneNumber || 'No data provided',
                       doctorId: doctor.uid,
                       doctorName: doctor.fullName,
                       doctorSpecialty: doctor.specialty || 'Telehealth Care',
                       date: 'Today',
                       time: 'Now',
                       type: 'Video Call',
-                      status: 'Upcoming',
+                      status: 'scheduled',
                       symptoms: selectedPatient.condition || 'General Telehealth Observation',
+                      meetingLink: `/call/${fallbackRoomId}`,
                     });
                   }
                 }}

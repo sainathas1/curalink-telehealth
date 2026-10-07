@@ -38,15 +38,12 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if request.auth != null && (
-        request.auth.uid == userId ||
-        request.auth.token.email == 'sainathas8788@gmail.com' ||
-        (resource.data.role in ['doctor', 'Doctor'] && resource.data.isVerified == true)
-      );
+      allow read: if request.auth != null;
       allow write: if request.auth != null && (request.auth.uid == userId || request.auth.token.email == 'sainathas8788@gmail.com');
 
       match /{allChildren=**} {
-        allow read, write: if request.auth != null && (request.auth.uid == userId || request.auth.token.email == 'sainathas8788@gmail.com');
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && (request.auth.uid == userId || request.auth.token.email == 'sainathas8788@gmail.com');
       }
     }
 
@@ -54,8 +51,8 @@ service cloud.firestore {
       allow read, write: if request.auth != null && (request.auth.uid == telemetryId || request.auth.token.email == 'sainathas8788@gmail.com');
     }
 
-    match /appointments/{appointmentId} {
-      allow read, write: if true;
+    match /appointments/{document} {
+      allow read, write: if request.auth != null;
     }
   }
 }

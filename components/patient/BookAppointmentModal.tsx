@@ -244,8 +244,9 @@ export function BookAppointmentModal({
       setIsProcessing(false);
       setIsSuccess(true);
 
+      const aptId = `apt_${Date.now()}`;
       const newAppointment: Appointment = {
-        id: `apt_${Date.now()}`,
+        id: aptId,
         patientId,
         patientName,
         doctorId: selectedDoctor?.id || '',
@@ -257,7 +258,7 @@ export function BookAppointmentModal({
         type: visitType,
         status: 'Upcoming',
         symptoms: symptoms || 'Routine telehealth vitals review and general follow-up consultation.',
-        meetingLink: visitType === 'Video Call' ? `https://meet.curalink.health/room-${Date.now()}` : undefined,
+        meetingLink: `/call/${aptId}`,
         paymentStatus: 'Paid',
         paymentAmount: 500,
         paymentTxnId: generatedTxn,

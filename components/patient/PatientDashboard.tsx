@@ -50,7 +50,13 @@ export function PatientDashboard({
   onJoinVideoCall,
   onEmergencySOS,
 }: PatientDashboardProps) {
-  const nextAppointment = appointments.find((a) => a.status === 'Upcoming');
+  const isScheduledAppointment = (apt?: Appointment | null) => {
+    if (!apt) return false;
+    const s = (apt.status || '').toLowerCase();
+    return s === 'scheduled' || s === 'upcoming' || s === 'in progress' || (s !== 'completed' && s !== 'cancelled');
+  };
+
+  const nextAppointment = appointments.find(isScheduledAppointment);
   const activePrescriptions = prescriptions.filter((p) => p.status === 'Active');
 
   const [hardwareTemp, setHardwareTemp] = useState<number | null>(null);
@@ -170,7 +176,7 @@ export function PatientDashboard({
           </div>
 
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-            {nextAppointment && nextAppointment.type === 'Video Call' ? (
+            {nextAppointment && isScheduledAppointment(nextAppointment) ? (
               <Link
                 href={`/call/${nextAppointment.id}`}
                 onClick={() => onJoinVideoCall(nextAppointment)}

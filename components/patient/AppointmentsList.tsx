@@ -34,13 +34,19 @@ export function AppointmentsList({
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
   const [filter, setFilter] = useState<'All' | 'Upcoming' | 'Completed'>('All');
 
+  const isScheduledAppointment = (apt?: Appointment | null) => {
+    if (!apt) return false;
+    const s = (apt.status || '').toLowerCase();
+    return s === 'scheduled' || s === 'upcoming' || s === 'in progress' || (s !== 'completed' && s !== 'cancelled');
+  };
+
   const filteredAppointments = appointments.filter((apt) => {
-    if (filter === 'Upcoming') return apt.status === 'Upcoming' || apt.status === 'In Progress';
-    if (filter === 'Completed') return apt.status === 'Completed';
+    if (filter === 'Upcoming') return isScheduledAppointment(apt);
+    if (filter === 'Completed') return apt.status === 'Completed' || (apt.status as string)?.toLowerCase() === 'completed';
     return true;
   });
 
-  const nextAppointment = appointments.find((a) => a.status === 'Upcoming');
+  const nextAppointment = appointments.find(isScheduledAppointment);
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto pb-6">
@@ -113,21 +119,14 @@ export function AppointmentsList({
             </div>
 
             <div className="shrink-0 w-full sm:w-auto">
-              {nextAppointment.type === 'Video Call' ? (
-                <Link
-                  href={`/call/${nextAppointment.id}`}
-                  onClick={() => onJoinVideoCall(nextAppointment)}
-                  className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-white font-bold text-xs shadow-lg shadow-teal-900/50 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 group"
-                >
-                  <Video className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  <span>Join Call</span>
-                </Link>
-              ) : (
-                <div className="px-4 py-3 rounded-2xl bg-white/10 text-xs font-semibold text-slate-200 flex items-center justify-center gap-2">
-                  <MapPin className="w-4 h-4 text-teal-400" />
-                  <span>In-Clinic Visit</span>
-                </div>
-              )}
+              <Link
+                href={`/call/${nextAppointment.id}`}
+                onClick={() => onJoinVideoCall(nextAppointment)}
+                className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-white font-bold text-xs shadow-lg shadow-teal-900/50 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 group"
+              >
+                <Video className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                <span>Join Call</span>
+              </Link>
             </div>
           </div>
         </div>
@@ -244,7 +243,7 @@ export function AppointmentsList({
                     <span className="font-mono text-slate-500">{apt.time}</span>
                   </div>
 
-                  {apt.status === 'Upcoming' && apt.type === 'Video Call' && (
+                  {isScheduledAppointment(apt) && (
                     <Link
                       href={`/call/${apt.id}`}
                       onClick={() => onJoinVideoCall(apt)}

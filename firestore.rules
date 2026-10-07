@@ -55,13 +55,7 @@ service cloud.firestore {
     }
 
     match /appointments/{appointmentId} {
-      allow create: if isSignedIn();
-      allow read, update: if isSignedIn() && (
-        request.auth.uid == resource.data.doctorId ||
-        request.auth.uid == resource.data.patientId ||
-        isAdmin()
-      );
-      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.patientId);
+      allow read, write: if true;
     }
   }
 }

@@ -103,11 +103,59 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
   const [isEmergencySOSOpen, setIsEmergencySOSOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  // Real-time Firestore Listeners
+  // Real-time Firestore Appointments Listener (Always Active for Doctor & Patient Realtime Sync)
+  useEffect(() => {
+    let unsubApts: (() => void) | undefined;
+    try {
+      const aptsCol = collection(db, 'appointments');
+      unsubApts = onSnapshot(
+        aptsCol,
+        (snapshot) => {
+          const apts: Appointment[] = [];
+          snapshot.forEach((d) => {
+            const data = d.data();
+            apts.push({ ...data, id: d.id } as Appointment);
+          });
+
+          // Sort by newest first
+          apts.sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+
+          // Live UI Refresh: Instantly update doctor queue
+          setDoctorAppointmentsQueue(apts);
+
+          // Live UI Refresh: Update patient appointments
+          const currentUid = authState.currentUser?.uid;
+          const currentName = authState.currentUser?.fullName;
+          if (currentUid) {
+            const userApts = apts.filter(
+              (a) =>
+                a.patientId === currentUid ||
+                a.patientId === 'patient_user' ||
+                (currentName && a.patientName?.toLowerCase() === currentName.toLowerCase())
+            );
+            setPatientAppointments(userApts.length > 0 ? userApts : apts);
+          } else {
+            setPatientAppointments(apts);
+          }
+        },
+        (err) => console.warn('Appointments real-time onSnapshot listener notice:', err.message)
+      );
+    } catch (err) {
+      console.warn('Error attaching appointments listener:', err);
+    }
+
+    return () => {
+      if (unsubApts) {
+        try {
+          unsubApts();
+        } catch {}
+      }
+    };
+  }, [authState.currentUser?.uid, authState.currentUser?.fullName]);
+
+  // Real-time Firestore Listeners for Prescriptions, Records, Directory
   useEffect(() => {
     if (!authState.currentUser) {
-      setPatientAppointments([]);
-      setDoctorAppointmentsQueue([]);
       setPrescriptions([]);
       setMedicalRecords([]);
       setPatientDirectory([]);
@@ -119,22 +167,6 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
     const unsubscribers: (() => void)[] = [];
 
     try {
-      // 1. Appointments Listener
-      const aptsQuery = isDoctor
-        ? collection(db, 'appointments')
-        : query(collection(db, 'appointments'), where('patientId', '==', currentUid));
-
-      const unsubApts = onSnapshot(aptsQuery, (snapshot) => {
-        const apts: Appointment[] = [];
-        snapshot.forEach((d) => apts.push({ ...d.data(), id: d.id } as Appointment));
-        if (isDoctor) {
-          setDoctorAppointmentsQueue(apts);
-        } else {
-          setPatientAppointments(apts);
-        }
-      }, (err) => console.warn('Appointments listener notice:', err.message));
-      unsubscribers.push(unsubApts);
-
       // 2. Prescriptions Listener
       const rxQuery = isDoctor
         ? query(collection(db, 'prescriptions'), where('doctorId', '==', currentUid))

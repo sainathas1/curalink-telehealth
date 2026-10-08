@@ -1,0 +1,1 @@
+"Remove the patient portal from the /admin route. Create a new dashboard specifically for doctors, with logic to show if they are verified or unverified. Generate the required Firebase Firestore database structure to store this doctor data."

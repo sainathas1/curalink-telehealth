@@ -82,9 +82,61 @@ export function VideoCallModal({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleSaveNotes = () => {
-    setNotesSaved(true);
-    setTimeout(() => setNotesSaved(false), 2000);
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const handleSaveNotes = async () => {
+    if (!clinicalNotes.trim()) return;
+    setIsSavingNotes(true);
+    try {
+      const { db } = await import('../../lib/firebase');
+      const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+
+      await addDoc(collection(db, 'medical_records'), {
+        patientId: currentAppointment.patientId,
+        patientName: currentAppointment.patientName || 'Patient',
+        doctorId: currentUser?.uid || currentAppointment.doctorId || 'attending_physician',
+        doctorName: currentUser?.fullName || doctorName,
+        type: 'Clinical Note',
+        content: {
+          title: `Consultation Note - ${currentAppointment.patientName}`,
+          notes: clinicalNotes.trim(),
+          diagnosis: currentAppointment.symptoms || 'Video Consultation Evaluation',
+          facility: 'CuraLink Telehealth Network',
+          fileSize: 'HIPAA Certified',
+          status: 'Finalized',
+          callDurationMinutes: Math.ceil(callDuration / 60),
+          recordedAt: new Date().toISOString(),
+        },
+        createdAt: serverTimestamp(),
+      });
+
+      // Also write to clinical_records for legacy compatibility
+      await addDoc(collection(db, 'clinical_records'), {
+        patientId: currentAppointment.patientId,
+        patientName: currentAppointment.patientName || 'Patient',
+        doctorId: currentUser?.uid || currentAppointment.doctorId || 'attending_physician',
+        doctorName: currentUser?.fullName || doctorName,
+        type: 'Clinical Note',
+        content: {
+          title: `Consultation Note - ${currentAppointment.patientName}`,
+          notes: clinicalNotes.trim(),
+          diagnosis: currentAppointment.symptoms || 'Video Consultation Evaluation',
+          facility: 'CuraLink Telehealth Network',
+          fileSize: 'HIPAA Certified',
+          status: 'Finalized',
+          callDurationMinutes: Math.ceil(callDuration / 60),
+          recordedAt: new Date().toISOString(),
+        },
+        createdAt: serverTimestamp(),
+      });
+
+      setNotesSaved(true);
+      setClinicalNotes('');
+      setTimeout(() => setNotesSaved(false), 3000);
+    } catch (err) {
+      console.error('Error saving clinical note to medical_records:', err);
+    } finally {
+      setIsSavingNotes(false);
+    }
   };
 
   // Generate deterministic room name so both patient and doctor join the same room
@@ -307,10 +359,11 @@ export function VideoCallModal({
               <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
                 <button
                   onClick={handleSaveNotes}
-                  className="flex-1 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-teal-700/20"
+                  disabled={isSavingNotes || !clinicalNotes.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-teal-700/20"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Save to Medical Record</span>
+                  <span>{isSavingNotes ? 'Saving to Firestore...' : 'Save to Medical Record'}</span>
                 </button>
               </div>
             </div>

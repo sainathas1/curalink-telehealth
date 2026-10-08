@@ -159,3 +159,24 @@ export interface PatientDirectoryItem {
     bloodPressure: string;
   };
 }
+
+export interface VitalRecord {
+  id: string;
+  patientId: string;
+  heartRate: number;
+  spo2: number;
+  temperature: number;
+  systolic?: number;
+  diastolic?: number;
+  notes?: string;
+  createdAt?: any;
+}
+
+export interface ConsultationMessage {
+  id: string;
+  appointmentId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  createdAt?: any;
+}

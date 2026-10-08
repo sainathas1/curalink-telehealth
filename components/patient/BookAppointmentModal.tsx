@@ -403,6 +403,7 @@ export function BookAppointmentModal({
 
   const handleProceedToPayment = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) return;
     if (!selectedDoctor || filteredDoctors.length === 0) return;
     setStep('payment');
   };
@@ -985,7 +986,12 @@ export function BookAppointmentModal({
             {/* Footer Buttons */}
             <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="text-[11px] text-slate-500">
-                {!selectedDoctor && (
+                {!currentUser && (
+                  <span className="text-amber-600 font-semibold flex items-center gap-1">
+                    * Please sign in to schedule an appointment.
+                  </span>
+                )}
+                {!selectedDoctor && currentUser && (
                   <span className="text-amber-600 font-semibold flex items-center gap-1">
                     * Please select an available verified clinician to continue.
                   </span>
@@ -1001,10 +1007,10 @@ export function BookAppointmentModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={!selectedDoctor || isLoadingDoctors || filteredDoctors.length === 0}
+                  disabled={!currentUser || !selectedDoctor || isLoadingDoctors || filteredDoctors.length === 0}
                   className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <span>Proceed to Payment (₹500.00)</span>
+                  <span>{!currentUser ? 'Sign In Required' : 'Proceed to Payment (₹500.00)'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>

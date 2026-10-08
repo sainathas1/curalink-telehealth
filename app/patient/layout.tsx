@@ -16,6 +16,7 @@ import { ESP32GuideModal } from '../../components/iot/ESP32GuideModal';
 import { EmergencySOSModal } from '../../components/patient/EmergencySOSModal';
 import { AuthModal } from '../../components/auth/AuthModal';
 import { initNativeBridge } from '../../lib/nativeBridge';
+import { motion } from 'framer-motion';
 
 export default function PatientLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -191,7 +192,14 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
 
         {/* Main Content Area - padded at bottom for persistent mobile bottom navigation bar */}
         <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto pb-24 md:pb-8">
-          {children}
+          <motion.div
+            key={pathname}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+          >
+            {children}
+          </motion.div>
         </main>
       </div>
 

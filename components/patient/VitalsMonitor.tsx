@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { LiveTelemetryPayload, VitalHistoryPoint } from '../../lib/types';
+import { useTelehealth } from '../../context/TelehealthContext';
 import { VitalsChart } from './VitalsChart';
 import {
   Heart,
@@ -15,6 +16,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   Sparkles,
+  Plus,
+  X,
+  FileCheck,
+  Clock,
 } from 'lucide-react';
 
 interface VitalsMonitorProps {
@@ -38,6 +43,45 @@ export function VitalsMonitor({
   onOpenSimulator,
   isSimulating,
 }: VitalsMonitorProps) {
+  const { currentUser, logVitalSign, vitalLogs } = useTelehealth();
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [logHr, setLogHr] = useState('75');
+  const [logSpo2, setLogSpo2] = useState('98');
+  const [logTemp, setLogTemp] = useState('36.8');
+  const [logSystolic, setLogSystolic] = useState('120');
+  const [logDiastolic, setLogDiastolic] = useState('80');
+  const [logNotes, setLogNotes] = useState('');
+  const [isLogging, setIsLogging] = useState(false);
+  const [logSuccess, setLogSuccess] = useState(false);
+
+  const isAuthValid = !!currentUser?.uid;
+
+  const handleLogSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAuthValid) return;
+    setIsLogging(true);
+    try {
+      await logVitalSign({
+        heartRate: Number(logHr) || 75,
+        spo2: Number(logSpo2) || 98,
+        temperature: Number(logTemp) || 36.8,
+        systolic: Number(logSystolic) || 120,
+        diastolic: Number(logDiastolic) || 80,
+        notes: logNotes.trim(),
+      });
+      setIsLogging(false);
+      setLogSuccess(true);
+      setTimeout(() => {
+        setLogSuccess(false);
+        setIsLogModalOpen(false);
+        setLogNotes('');
+      }, 1000);
+    } catch (err) {
+      console.error('Error logging vital signs:', err);
+      setIsLogging(false);
+    }
+  };
+
   const isStandby = !telemetry.sensorConnected || telemetry.heartRate === 0;
 
   // Temperature conversion
@@ -138,6 +182,17 @@ export function VitalsMonitor({
               <VolumeX className="w-3.5 h-3.5 text-slate-400" />
             )}
             <span>{audioAlertsEnabled ? 'Sound On' : 'Muted'}</span>
+          </button>
+
+          {/* Record Vitals Button */}
+          <button
+            onClick={() => setIsLogModalOpen(true)}
+            disabled={!isAuthValid}
+            title={!isAuthValid ? 'Sign in to record vitals' : 'Record physiological vitals to Firestore'}
+            className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>{!isAuthValid ? 'Sign In to Log' : 'Record Vitals'}</span>
           </button>
 
           {/* Simulator Trigger */}
@@ -321,6 +376,223 @@ export function VitalsMonitor({
 
       {/* 24-Hour IoT Telemetry Dynamic Trend Line Chart */}
       <VitalsChart history={history} temperatureUnit={temperatureUnit} />
+
+      {/* Logged Vitals from Firestore Collection */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <Clock className="w-4 h-4 text-teal-600" />
+              <span>Patient Logged Vitals Records (Firestore)</span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              History of validated vital measurements recorded to the <code className="font-mono text-teal-600">vitals</code> collection
+            </p>
+          </div>
+          <button
+            onClick={() => setIsLogModalOpen(true)}
+            disabled={!isAuthValid}
+            className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Record Entry</span>
+          </button>
+        </div>
+
+        {vitalLogs.length === 0 ? (
+          <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            <Heart className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+            <p className="text-xs font-semibold text-slate-600">No manual entries recorded yet</p>
+            <p className="text-[11px] text-slate-400 max-w-xs mx-auto mt-0.5">
+              Click &quot;Record Entry&quot; above to log your heart rate, oxygen saturation, and body temperature.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold text-[10px]">
+                <tr>
+                  <th className="px-4 py-3">Timestamp</th>
+                  <th className="px-4 py-3">Heart Rate</th>
+                  <th className="px-4 py-3">SpO2</th>
+                  <th className="px-4 py-3">Temperature</th>
+                  <th className="px-4 py-3">Blood Pressure</th>
+                  <th className="px-4 py-3">Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {vitalLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-4 py-3 font-mono text-slate-500 text-[11px]">
+                      {log.createdAt?.toDate ? log.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }) : 'Recently'}
+                    </td>
+                    <td className="px-4 py-3 font-bold text-rose-600 font-mono">
+                      {log.heartRate} BPM
+                    </td>
+                    <td className="px-4 py-3 font-bold text-cyan-600 font-mono">
+                      {log.spo2}%
+                    </td>
+                    <td className="px-4 py-3 font-bold text-amber-600 font-mono">
+                      {log.temperature}°C
+                    </td>
+                    <td className="px-4 py-3 font-mono text-slate-700">
+                      {log.systolic || '--'}/{log.diastolic || '--'} mmHg
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 max-w-xs truncate">
+                      {log.notes || 'Routine checkup log'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Manual Vitals Recording Modal */}
+      {isLogModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-teal-800 to-slate-900 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300">
+                  <Heart className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Record Vitals to Firestore</h3>
+                  <p className="text-xs text-teal-200">Logs directly to the vitals collection & telemetry</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsLogModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {logSuccess ? (
+              <div className="p-8 text-center space-y-3">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-md">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <h4 className="text-base font-bold text-slate-900">Vitals Recorded Successfully!</h4>
+                <p className="text-xs text-slate-500">Document saved to Firestore and live stream synchronized.</p>
+              </div>
+            ) : (
+              <form onSubmit={handleLogSubmit} className="p-5 space-y-4 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Heart Rate (BPM)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={30}
+                      max={240}
+                      value={logHr}
+                      onChange={(e) => setLogHr(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Oxygen SpO2 (%)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={70}
+                      max={100}
+                      value={logSpo2}
+                      onChange={(e) => setLogSpo2(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Temp (°C)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      required
+                      min={34}
+                      max={43}
+                      value={logTemp}
+                      onChange={(e) => setLogTemp(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Systolic BP
+                    </label>
+                    <input
+                      type="number"
+                      min={60}
+                      max={220}
+                      value={logSystolic}
+                      onChange={(e) => setLogSystolic(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Diastolic BP
+                    </label>
+                    <input
+                      type="number"
+                      min={40}
+                      max={140}
+                      value={logDiastolic}
+                      onChange={(e) => setLogDiastolic(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Clinical Notes / Symptoms (Optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Taken post-exercise, mild shortness of breath..."
+                    value={logNotes}
+                    onChange={(e) => setLogNotes(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsLogModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isLogging}
+                    className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-md shadow-teal-600/20"
+                  >
+                    <FileCheck className="w-4 h-4" />
+                    <span>{isLogging ? 'Writing to Firestore...' : 'Commit to Firestore'}</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

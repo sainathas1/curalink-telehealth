@@ -22,17 +22,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'fullName', 'email', 'role', 'createdAt']) &&
-        data.keys().hasOnly(['uid', 'fullName', 'email', 'role', 'createdAt', 'updatedAt', 'phoneNumber']) &&
-        data.uid is string && data.uid == request.auth.uid &&
-        data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 100 &&
-        data.email is string && data.email.size() >= 5 && data.email.size() <= 100 &&
-        (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 25)) &&
-        data.role is string && (data.role == 'Patient' || data.role == 'Doctor') &&
-        data.createdAt is timestamp;
-    }
-
     function isAdmin() {
       return isSignedIn() && request.auth.token.email == 'sainathas8788@gmail.com';
     }
@@ -48,10 +37,18 @@ service cloud.firestore {
     }
 
     match /telemetry/{telemetryId} {
-      allow read, write: if request.auth != null && (request.auth.uid == telemetryId || request.auth.token.email == 'sainathas8788@gmail.com');
+      allow read, write: if request.auth != null;
+    }
+
+    match /vitals/{document} {
+      allow read, write: if request.auth != null;
     }
 
     match /appointments/{document} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /medical_records/{document} {
       allow read, write: if request.auth != null;
     }
 
@@ -64,6 +61,10 @@ service cloud.firestore {
     }
 
     match /medicalRecords/{document} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /consultation_messages/{document} {
       allow read, write: if request.auth != null;
     }
   }

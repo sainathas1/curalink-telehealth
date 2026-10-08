@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { motion } from 'framer-motion';
 import {
   collection,
   doc,
@@ -369,6 +370,12 @@ export default function AdminMasterCommandCenterPage() {
       {/* MAIN CONTENT AREA                                             */}
       {/* ------------------------------------------------------------- */}
       <main className="flex-1 min-w-0 p-5 sm:p-8 space-y-8 overflow-y-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="space-y-8"
+        >
         {/* Toast Notification */}
         {successToast && (
           <div className="bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 px-4 py-3 rounded-2xl flex items-center justify-between text-xs sm:text-sm shadow-xl shadow-emerald-950/30 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -721,6 +728,7 @@ export default function AdminMasterCommandCenterPage() {
             )}
           </div>
         </section>
+        </motion.div>
       </main>
     </div>
   );

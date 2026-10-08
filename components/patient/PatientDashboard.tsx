@@ -61,31 +61,58 @@ export function PatientDashboard({
 
   const [liveClinicalRecords, setLiveClinicalRecords] = useState<ClinicalRecord[]>([]);
 
-  // Real-Time Sync: Wire patient dashboard to fetch from clinical_records collection where patientId == currentUser.uid
+  // Real-Time Sync: Wire patient dashboard to fetch from medical_records collection (primary) and clinical_records (legacy) where patientId == currentUser.uid
   useEffect(() => {
     if (!user?.uid) return;
 
     try {
-      const q = query(
+      const qMed = query(
+        collection(db, 'medical_records'),
+        where('patientId', '==', user.uid)
+      );
+
+      const qClin = query(
         collection(db, 'clinical_records'),
         where('patientId', '==', user.uid)
       );
 
-      const unsub = onSnapshot(
-        q,
+      const unsubMed = onSnapshot(
+        qMed,
         (snapshot) => {
           const recs: ClinicalRecord[] = [];
           snapshot.forEach((docSnap) => {
             recs.push({ id: docSnap.id, ...docSnap.data() } as ClinicalRecord);
           });
-          setLiveClinicalRecords(recs);
+          setLiveClinicalRecords((prev) => {
+            const nonMed = prev.filter((p) => !recs.some((r) => r.id === p.id));
+            return [...recs, ...nonMed];
+          });
+        },
+        (err) => console.warn('Patient dashboard medical_records onSnapshot notice:', err)
+      );
+
+      const unsubClin = onSnapshot(
+        qClin,
+        (snapshot) => {
+          const recs: ClinicalRecord[] = [];
+          snapshot.forEach((docSnap) => {
+            recs.push({ id: docSnap.id, ...docSnap.data() } as ClinicalRecord);
+          });
+          setLiveClinicalRecords((prev) => {
+            const existingIds = new Set(prev.map((r) => r.id));
+            const newRecs = recs.filter((r) => !existingIds.has(r.id));
+            return [...prev, ...newRecs];
+          });
         },
         (err) => console.warn('Patient dashboard clinical_records onSnapshot notice:', err)
       );
 
-      return () => unsub();
+      return () => {
+        unsubMed();
+        unsubClin();
+      };
     } catch (err) {
-      console.warn('Error subscribing to clinical_records in PatientDashboard:', err);
+      console.warn('Error subscribing to medical_records in PatientDashboard:', err);
     }
   }, [user?.uid]);
 

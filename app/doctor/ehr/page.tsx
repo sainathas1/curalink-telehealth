@@ -5,7 +5,7 @@ import { useTelehealth } from '../../../context/TelehealthContext';
 import { PrescriptionsList } from '../../../components/patient/PrescriptionsList';
 
 export default function DoctorEHRRoute() {
-  const { prescriptions, openEHR } = useTelehealth();
+  const { currentUser, prescriptions, openEHR } = useTelehealth();
 
   return (
     <div className="space-y-6">
@@ -20,7 +20,9 @@ export default function DoctorEHRRoute() {
         </div>
         <button
           onClick={() => openEHR('')}
-          className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer"
+          disabled={!currentUser?.uid}
+          title={!currentUser?.uid ? 'Physician sign in required to write prescriptions' : ''}
+          className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer"
         >
           + Write New Prescription
         </button>

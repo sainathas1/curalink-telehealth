@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../hooks/useAuth';
 import { useTelemetry } from '../hooks/useTelemetry';
+import { useTelehealth } from '../context/TelehealthContext';
 import {
   Appointment,
   Prescription,
@@ -83,11 +84,6 @@ export default function CuraLinkApp() {
     toggleRole,
     handleLogout,
     setAuthenticatedProfile,
-  } = useAuth();
-
-  const activePatientId = currentUser?.uid || 'patient_live';
-
-  const {
     telemetry,
     history,
     isSimulating,
@@ -98,7 +94,38 @@ export default function CuraLinkApp() {
     setAudioAlertsEnabled,
     temperatureUnit,
     toggleTemperatureUnit,
-  } = useTelemetry(activePatientId);
+    patientAppointments,
+    doctorAppointmentsQueue,
+    prescriptions,
+    medicalRecords,
+    patientDirectory,
+    addAppointment,
+    addPrescription,
+    addMedicalRecord,
+    isVideoCallOpen,
+    activeCallAppointment,
+    openVideoCall,
+    closeVideoCall,
+    isEHRModalOpen,
+    targetEhrPatientName,
+    targetEhrPatientId,
+    openEHR,
+    closeEHR,
+    isSimulatorDrawerOpen,
+    openSimulator,
+    closeSimulator,
+    isESP32GuideOpen,
+    openESP32Guide,
+    closeESP32Guide,
+    isEmergencySOSOpen,
+    openEmergencySOS,
+    closeEmergencySOS,
+    isAuthModalOpen,
+    openAuthModal,
+    closeAuthModal,
+  } = useTelehealth();
+
+  const activePatientId = currentUser?.uid || 'patient_live';
 
   // View Mode: 'website' (3D showcase) or 'portal' (in-app dashboard workspace)
   const [viewMode, setViewMode] = useState<'website' | 'portal'>('website');
@@ -106,23 +133,6 @@ export default function CuraLinkApp() {
   // Active Tab State inside Portal mode
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-
-  // Core Data Lists
-  const [patientAppointments, setPatientAppointments] = useState<Appointment[]>([]);
-  const [doctorAppointmentsQueue, setDoctorAppointmentsQueue] = useState<Appointment[]>([]);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
-  const [patientDirectory, setPatientDirectory] = useState<PatientDirectoryItem[]>([]);
-
-  // Modals
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
-  const [activeCallAppointment, setActiveCallAppointment] = useState<Appointment | null>(null);
-  const [isEHRModalOpen, setIsEHRModalOpen] = useState(false);
-  const [targetEhrPatientName, setTargetEhrPatientName] = useState('');
-  const [isSimulatorDrawerOpen, setIsSimulatorDrawerOpen] = useState(false);
-  const [isESP32GuideOpen, setIsESP32GuideOpen] = useState(false);
-  const [isEmergencySOSOpen, setIsEmergencySOSOpen] = useState(false);
 
   // Handle Role Switch in Portal Mode
   const handleToggleRole = () => {
@@ -136,47 +146,27 @@ export default function CuraLinkApp() {
 
   // Video Call Action
   const handleStartVideoCall = (appointmentOrName: Appointment | string) => {
-    if (typeof appointmentOrName === 'string') {
-      const apt: Appointment = {
-        id: `apt_quick_${Date.now()}`,
-        patientId: activePatientId,
-        patientName: appointmentOrName,
-        doctorId: currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.uid : 'attending_physician',
-        doctorName: currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician',
-        doctorSpecialty: 'Telehealth Consultation',
-        date: 'Today',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: 'Video Call',
-        status: 'In Progress',
-        symptoms: 'Urgent telemetry triage review session.',
-      };
-      setActiveCallAppointment(apt);
-    } else {
-      setActiveCallAppointment(appointmentOrName);
-    }
-    setIsVideoCallOpen(true);
+    openVideoCall(appointmentOrName);
   };
 
   // Open EHR Modal for a patient
-  const handleOpenEHR = (patientName: string) => {
-    setTargetEhrPatientName(patientName);
-    setIsEHRModalOpen(true);
+  const handleOpenEHR = (patientName: string, patientId?: string) => {
+    openEHR(patientName, patientId);
   };
 
-  // Issue new prescription
-  const handleIssuePrescription = (newRx: Prescription) => {
-    setPrescriptions((prev) => [newRx, ...prev]);
+  // Issue new prescription (routes strictly to medical_records)
+  const handleIssuePrescription = async (newRx: Prescription) => {
+    await addPrescription(newRx);
   };
 
-  // Book new appointment
-  const handleBookAppointment = (newApt: Appointment) => {
-    setPatientAppointments((prev) => [newApt, ...prev]);
-    setDoctorAppointmentsQueue((prev) => [newApt, ...prev]);
+  // Book new appointment (routes strictly to appointments)
+  const handleBookAppointment = async (newApt: Appointment) => {
+    await addAppointment(newApt);
   };
 
-  // Upload new medical record
-  const handleUploadRecord = (newRec: MedicalRecord) => {
-    setMedicalRecords((prev) => [newRec, ...prev]);
+  // Upload new medical record (routes strictly to medical_records)
+  const handleUploadRecord = async (newRec: MedicalRecord) => {
+    await addMedicalRecord(newRec);
   };
 
   const patientName = currentUser?.fullName || 'Patient';
@@ -196,7 +186,7 @@ export default function CuraLinkApp() {
 
         {/* 1. Sleek 3D Glassmorphic Header */}
         <LandingHeader
-          onOpenAuth={() => setIsAuthModalOpen(true)}
+          onOpenAuth={openAuthModal}
           onLaunchPortal={() => setViewMode('portal')}
           onToggleDemoMode={() => setViewMode('portal')}
           isDemoMode={false}
@@ -244,7 +234,7 @@ export default function CuraLinkApp() {
             </Link>
 
             <button
-              onClick={() => setIsSimulatorDrawerOpen(true)}
+              onClick={openSimulator}
               className="px-5 py-3.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-bold text-xs sm:text-sm border border-white/10 transition-all flex items-center gap-2 cursor-pointer"
               title="Test Tachycardia, Fever, or Arrhythmia Alarms"
             >
@@ -310,7 +300,7 @@ export default function CuraLinkApp() {
 
               <div className="pt-4 flex flex-wrap items-center justify-center gap-3">
                 <button
-                  onClick={() => setIsAuthModalOpen(true)}
+                  onClick={openAuthModal}
                   className="px-6 py-3.5 rounded-2xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-sm shadow-xl shadow-teal-500/30 transition-all cursor-pointer"
                 >
                   Create Free Account
@@ -333,7 +323,7 @@ export default function CuraLinkApp() {
         {/* Global Modals wired into Website Mode */}
         <AuthModal
           isOpen={isAuthModalOpen}
-          onClose={() => setIsAuthModalOpen(false)}
+          onClose={closeAuthModal}
           onSuccess={(profile) => {
             setAuthenticatedProfile(profile);
             if (profile.role?.toLowerCase() === 'doctor') {
@@ -347,15 +337,12 @@ export default function CuraLinkApp() {
 
         <VideoCallModal
           isOpen={isVideoCallOpen}
-          onClose={() => {
-            setIsVideoCallOpen(false);
-            setActiveCallAppointment(null);
-          }}
+          onClose={closeVideoCall}
           appointment={activeCallAppointment}
           telemetry={telemetry}
           onOpenEHR={() => {
             if (role?.toLowerCase() === 'doctor' && activeCallAppointment) {
-              handleOpenEHR(activeCallAppointment.patientName);
+              handleOpenEHR(activeCallAppointment.patientName, activeCallAppointment.patientId);
             }
           }}
           doctorName={currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician'}
@@ -365,32 +352,35 @@ export default function CuraLinkApp() {
 
         <EHRPrescriptionModal
           isOpen={isEHRModalOpen}
-          onClose={() => setIsEHRModalOpen(false)}
+          onClose={closeEHR}
           onIssuePrescription={handleIssuePrescription}
           defaultPatientName={targetEhrPatientName}
+          defaultPatientId={targetEhrPatientId}
+          doctorId={currentUser?.uid}
           doctorName={currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician'}
+          patientDirectory={patientDirectory}
         />
 
         <HardwareSimulatorDrawer
           isOpen={isSimulatorDrawerOpen}
-          onClose={() => setIsSimulatorDrawerOpen(false)}
+          onClose={closeSimulator}
           isSimulating={isSimulating}
           onToggleSimulating={() => setIsSimulating(!isSimulating)}
           simulationMode={simulationMode}
           onChangeMode={changeSimulationMode}
           telemetry={telemetry}
-          onOpenCodeGuide={() => setIsESP32GuideOpen(true)}
+          onOpenCodeGuide={openESP32Guide}
         />
 
         <ESP32GuideModal
           isOpen={isESP32GuideOpen}
-          onClose={() => setIsESP32GuideOpen(false)}
+          onClose={closeESP32Guide}
           patientId={activePatientId}
         />
 
         <EmergencySOSModal
           isOpen={isEmergencySOSOpen}
-          onClose={() => setIsEmergencySOSOpen(false)}
+          onClose={closeEmergencySOS}
           telemetry={telemetry}
           patientName={patientName}
         />
@@ -425,11 +415,11 @@ export default function CuraLinkApp() {
         role={role}
         onToggleRole={handleToggleRole}
         onLogout={handleLogout}
-        onOpenAuth={() => setIsAuthModalOpen(true)}
+        onOpenAuth={openAuthModal}
         telemetry={telemetry}
         isSimulating={isSimulating}
-        onToggleSimulatorDrawer={() => setIsSimulatorDrawerOpen(true)}
-        onOpenHardwareGuide={() => setIsESP32GuideOpen(true)}
+        onToggleSimulatorDrawer={openSimulator}
+        onOpenHardwareGuide={openESP32Guide}
         activeCriticalAlertsCount={telemetry.status === 'critical' ? 1 : 0}
       />
 
@@ -442,7 +432,7 @@ export default function CuraLinkApp() {
           onSelectTab={(tab) => setActiveTab(tab)}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          onEmergencySOS={() => setIsEmergencySOSOpen(true)}
+          onEmergencySOS={openEmergencySOS}
           activeAlertCount={criticalCount}
         />
 
@@ -460,7 +450,7 @@ export default function CuraLinkApp() {
                   records={medicalRecords}
                   onNavigateTab={(tab) => setActiveTab(tab)}
                   onJoinVideoCall={handleStartVideoCall}
-                  onEmergencySOS={() => setIsEmergencySOSOpen(true)}
+                  onEmergencySOS={openEmergencySOS}
                 />
               )}
 
@@ -472,7 +462,7 @@ export default function CuraLinkApp() {
                   onToggleTempUnit={toggleTemperatureUnit}
                   audioAlertsEnabled={audioAlertsEnabled}
                   onToggleAudio={() => setAudioAlertsEnabled(!audioAlertsEnabled)}
-                  onOpenSimulator={() => setIsSimulatorDrawerOpen(true)}
+                  onOpenSimulator={openSimulator}
                   isSimulating={isSimulating}
                 />
               )}
@@ -526,7 +516,7 @@ export default function CuraLinkApp() {
                   liveTelemetry={telemetry}
                   onStartVideoCall={handleStartVideoCall}
                   onOpenEHR={handleOpenEHR}
-                  onOpenSimulator={() => setIsSimulatorDrawerOpen(true)}
+                  onOpenSimulator={openSimulator}
                 />
               )}
 
@@ -576,13 +566,13 @@ export default function CuraLinkApp() {
                     </div>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setIsSimulatorDrawerOpen(true)}
+                        onClick={openSimulator}
                         className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer"
                       >
                         Open Simulator Drawer
                       </button>
                       <button
-                        onClick={() => setIsESP32GuideOpen(true)}
+                        onClick={openESP32Guide}
                         className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs cursor-pointer"
                       >
                         View ESP32 C++ Code
@@ -596,7 +586,7 @@ export default function CuraLinkApp() {
                     liveTelemetry={telemetry}
                     onStartVideoCall={handleStartVideoCall}
                     onOpenEHR={handleOpenEHR}
-                    onOpenSimulator={() => setIsSimulatorDrawerOpen(true)}
+                    onOpenSimulator={openSimulator}
                   />
                 </div>
               )}
@@ -613,10 +603,10 @@ export default function CuraLinkApp() {
         activeAlertCount={criticalCount}
       />
 
-      {/* ================= MODALS & DRAWERS ================= */}
+      {/* ================= MODALS & DRAWERS IN PORTAL MODE ================= */}
       <AuthModal
         isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        onClose={closeAuthModal}
         onSuccess={(profile) => {
           setAuthenticatedProfile(profile);
           if (profile.role?.toLowerCase() === 'doctor') setActiveTab('clinical-queue');
@@ -627,15 +617,12 @@ export default function CuraLinkApp() {
 
       <VideoCallModal
         isOpen={isVideoCallOpen}
-        onClose={() => {
-          setIsVideoCallOpen(false);
-          setActiveCallAppointment(null);
-        }}
+        onClose={closeVideoCall}
         appointment={activeCallAppointment}
         telemetry={telemetry}
         onOpenEHR={() => {
           if (role?.toLowerCase() === 'doctor' && activeCallAppointment) {
-            handleOpenEHR(activeCallAppointment.patientName);
+            handleOpenEHR(activeCallAppointment.patientName, activeCallAppointment.patientId);
           }
         }}
         doctorName={currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician'}
@@ -645,32 +632,35 @@ export default function CuraLinkApp() {
 
       <EHRPrescriptionModal
         isOpen={isEHRModalOpen}
-        onClose={() => setIsEHRModalOpen(false)}
+        onClose={closeEHR}
         onIssuePrescription={handleIssuePrescription}
         defaultPatientName={targetEhrPatientName}
+        defaultPatientId={targetEhrPatientId}
+        doctorId={currentUser?.uid}
         doctorName={currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician'}
+        patientDirectory={patientDirectory}
       />
 
       <HardwareSimulatorDrawer
         isOpen={isSimulatorDrawerOpen}
-        onClose={() => setIsSimulatorDrawerOpen(false)}
+        onClose={closeSimulator}
         isSimulating={isSimulating}
         onToggleSimulating={() => setIsSimulating(!isSimulating)}
         simulationMode={simulationMode}
         onChangeMode={changeSimulationMode}
         telemetry={telemetry}
-        onOpenCodeGuide={() => setIsESP32GuideOpen(true)}
+        onOpenCodeGuide={openESP32Guide}
       />
 
       <ESP32GuideModal
         isOpen={isESP32GuideOpen}
-        onClose={() => setIsESP32GuideOpen(false)}
+        onClose={closeESP32Guide}
         patientId={activePatientId}
       />
 
       <EmergencySOSModal
         isOpen={isEmergencySOSOpen}
-        onClose={() => setIsEmergencySOSOpen(false)}
+        onClose={closeEmergencySOS}
         telemetry={telemetry}
         patientName={patientName}
       />

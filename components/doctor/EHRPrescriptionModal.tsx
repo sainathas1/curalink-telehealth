@@ -101,7 +101,17 @@ export function EHRPrescriptionModal({
         };
 
     try {
-      // Strict write to clinical_records collection with serverTimestamp()
+      // Strict write to medical_records collection with serverTimestamp()
+      await addDoc(collection(db, 'medical_records'), {
+        patientId: targetPatientId,
+        doctorId: targetDoctorId,
+        doctorName,
+        patientName: patientName || 'Patient',
+        type: recordType,
+        content: recordContent,
+        createdAt: serverTimestamp(),
+      });
+      // Also write to clinical_records for legacy record listeners
       await addDoc(collection(db, 'clinical_records'), {
         patientId: targetPatientId,
         doctorId: targetDoctorId,
@@ -112,7 +122,7 @@ export function EHRPrescriptionModal({
         createdAt: serverTimestamp(),
       });
     } catch (saveErr) {
-      console.warn('clinical_records write notice:', saveErr);
+      console.warn('medical_records write notice:', saveErr);
     }
 
     const newRx: Prescription = {
@@ -463,13 +473,16 @@ export function EHRPrescriptionModal({
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-bold shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                disabled={isSubmitting || !doctorId}
+                title={!doctorId ? 'Physician authentication required to submit clinical records' : ''}
+                className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <FileCheck className="w-4 h-4" />
                 <span>
                   {isSubmitting
                     ? 'Transmitting Record...'
+                    : !doctorId
+                    ? 'Authentication Required'
                     : recordType === 'Prescription'
                     ? 'Digitally Sign & Issue Rx'
                     : 'Save Clinical Note to Record'}

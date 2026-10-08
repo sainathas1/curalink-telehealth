@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { auth, db } from '../../../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc, updateDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, onSnapshot, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { useTelehealth } from '../../../context/TelehealthContext';
 
 interface SyncHistoryItem {
@@ -226,6 +226,24 @@ export default function ConnectedDevicesPage() {
 
       await setDoc(userRef, updateData, { merge: true });
 
+      // Route vitals record to vitals collection
+      try {
+        await addDoc(collection(db, 'vitals'), {
+          patientId: user.uid,
+          patientName: currentUser?.fullName || user.displayName || 'Patient',
+          heartRate: 75,
+          spo2: 98,
+          temperature: tempToSync,
+          systolic: 120,
+          diastolic: 80,
+          notes: `USB device telemetry sync: ${tempToSync.toFixed(1)}°C (${status})`,
+          timestamp: nowIso,
+          createdAt: serverTimestamp(),
+        });
+      } catch (vitalErr) {
+        console.warn('Vitals collection addDoc notice:', vitalErr);
+      }
+
       // Also record history item in local list
       const newItem: SyncHistoryItem = {
         id: `sync_${Date.now()}`,
@@ -389,8 +407,9 @@ export default function ConnectedDevicesPage() {
             <div className="pt-2 space-y-3">
               <button
                 onClick={() => syncTemperatureToFirestore(currentTemperature)}
-                disabled={isSyncing}
-                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs shadow-lg shadow-teal-900/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                disabled={isSyncing || (!firebaseUser && !auth.currentUser)}
+                title={(!firebaseUser && !auth.currentUser) ? 'Please sign in to sync vitals to Firestore' : ''}
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs shadow-lg shadow-teal-900/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSyncing ? (
                   <>

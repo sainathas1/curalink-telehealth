@@ -331,7 +331,9 @@ export default function PatientProfileRoute() {
 
           <button
             onClick={() => setIsEditModalOpen(true)}
-            className="text-xs font-semibold text-teal-600 hover:text-teal-700 flex items-center gap-1 cursor-pointer"
+            disabled={!currentUser?.uid}
+            title={!currentUser?.uid ? 'Sign in to update profile' : 'Edit health profile'}
+            className="text-xs font-semibold text-teal-600 hover:text-teal-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
           >
             <span>Update Details</span>
             <Edit3 className="w-3.5 h-3.5" />
@@ -699,8 +701,8 @@ export default function PatientProfileRoute() {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSaving}
-                    className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-md shadow-teal-600/20 cursor-pointer disabled:opacity-50"
+                    disabled={isSaving || !currentUser?.uid}
+                    className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-md shadow-teal-600/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSaving ? (
                       <>

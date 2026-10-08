@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { Appointment } from '../../lib/types';
 import { BookAppointmentModal } from './BookAppointmentModal';
+import { useTelehealth } from '../../context/TelehealthContext';
 import {
   Calendar,
   Video,
@@ -14,6 +15,7 @@ import {
   CreditCard,
   MapPin,
   Sparkles,
+  XCircle,
 } from 'lucide-react';
 
 interface AppointmentsListProps {
@@ -31,8 +33,12 @@ export function AppointmentsList({
   patientName,
   patientId,
 }: AppointmentsListProps) {
+  const { updateAppointmentStatus, currentUser } = useTelehealth();
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
   const [filter, setFilter] = useState<'All' | 'Upcoming' | 'Completed'>('All');
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  const isAuthValid = !!currentUser?.uid && patientId !== 'guest_user';
 
   const isScheduledAppointment = (apt?: Appointment | null) => {
     if (!apt) return false;
@@ -69,7 +75,9 @@ export function AppointmentsList({
 
         <button
           onClick={() => setIsBookModalOpen(true)}
-          className="px-5 py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 self-start sm:self-auto w-full sm:w-auto"
+          disabled={!isAuthValid}
+          title={!isAuthValid ? 'Sign in to schedule an appointment' : ''}
+          className="px-5 py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 self-start sm:self-auto w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" />
           <span>Book Consultation</span>
@@ -174,7 +182,9 @@ export function AppointmentsList({
               </p>
               <button
                 onClick={() => setIsBookModalOpen(true)}
-                className="px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs transition-all m3-pressable flex items-center gap-1.5 cursor-pointer"
+                disabled={!isAuthValid}
+                title={!isAuthValid ? 'Sign in to schedule an appointment' : ''}
+                className="px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-xs shadow-xs transition-all m3-pressable flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Book First Consultation</span>
@@ -244,14 +254,32 @@ export function AppointmentsList({
                   </div>
 
                   {isScheduledAppointment(apt) && (
-                    <Link
-                      href={`/call/${apt.id}`}
-                      onClick={() => onJoinVideoCall(apt)}
-                      className="w-full sm:w-auto px-4 py-2 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all m3-pressable cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <Video className="w-3.5 h-3.5" />
-                      <span>Join Call</span>
-                    </Link>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        onClick={async () => {
+                          if (confirm('Are you sure you want to cancel this appointment?')) {
+                            setCancellingId(apt.id);
+                            await updateAppointmentStatus(apt.id, 'cancelled');
+                            setCancellingId(null);
+                          }
+                        }}
+                        disabled={cancellingId === apt.id}
+                        className="px-3 py-2 rounded-2xl border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs transition-all m3-pressable cursor-pointer flex items-center justify-center gap-1"
+                        title="Cancel this scheduled visit"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>{cancellingId === apt.id ? 'Cancelling...' : 'Cancel'}</span>
+                      </button>
+
+                      <Link
+                        href={`/call/${apt.id}`}
+                        onClick={() => onJoinVideoCall(apt)}
+                        className="w-full sm:w-auto px-4 py-2 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all m3-pressable cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Video className="w-3.5 h-3.5" />
+                        <span>Join Call</span>
+                      </Link>
+                    </div>
                   )}
                 </div>
               </div>

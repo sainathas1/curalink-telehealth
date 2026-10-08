@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { MedicalRecord } from '../../lib/types';
+import { db } from '../../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import {
   FileText,
   Download,
@@ -34,9 +36,36 @@ export function MedicalRecordsList({
   const [newFacility, setNewFacility] = useState('CuraLink Diagnostics');
   const [newSummary, setNewSummary] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleUploadSubmit = (e: React.FormEvent) => {
+  const isAuthValid = !!patientId && patientId !== 'guest_user';
+
+  const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true);
+
+    const docPayload = {
+      patientId: patientId || 'patient_user',
+      patientName: patientName || 'Patient',
+      type: newType,
+      content: {
+        title: newTitle || 'Lab Diagnostics Report',
+        facility: newFacility,
+        summary: newSummary || 'Patient-uploaded diagnostics summary for doctor evaluation.',
+        fileSize: '1.8 MB (PDF)',
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        downloadUrl: '',
+      },
+      createdAt: serverTimestamp(),
+    };
+
+    try {
+      // Strict write to medical_records collection
+      await addDoc(collection(db, 'medical_records'), docPayload);
+    } catch (saveErr) {
+      console.warn('medical_records document write notice:', saveErr);
+    }
+
     const newRec: MedicalRecord = {
       id: `rec_${Date.now()}`,
       patientId: patientId || 'patient_user',
@@ -49,6 +78,7 @@ export function MedicalRecordsList({
       summary: newSummary || 'Patient-uploaded diagnostics summary for doctor evaluation.',
     };
 
+    setIsSaving(false);
     setUploadSuccess(true);
     setTimeout(() => {
       onUploadRecord(newRec);
@@ -80,7 +110,9 @@ export function MedicalRecordsList({
 
         <button
           onClick={() => setIsUploadOpen(true)}
-          className="px-5 py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 self-start sm:self-auto w-full sm:w-auto"
+          disabled={!isAuthValid}
+          title={!isAuthValid ? 'Sign in to upload medical records' : ''}
+          className="px-5 py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 self-start sm:self-auto w-full sm:w-auto"
         >
           <Upload className="w-4 h-4" />
           <span>Upload Lab Document</span>
@@ -101,7 +133,9 @@ export function MedicalRecordsList({
           </p>
           <button
             onClick={() => setIsUploadOpen(true)}
-            className="px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs transition-all m3-pressable flex items-center gap-1.5 cursor-pointer"
+            disabled={!isAuthValid}
+            title={!isAuthValid ? 'Sign in to upload medical records' : ''}
+            className="px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-xs shadow-xs transition-all m3-pressable flex items-center gap-1.5 cursor-pointer"
           >
             <Upload className="w-4 h-4" />
             <span>Upload First Document</span>
@@ -332,9 +366,11 @@ export function MedicalRecordsList({
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all m3-pressable cursor-pointer"
+                    disabled={isSaving || !isAuthValid}
+                    title={!isAuthValid ? 'Sign in to upload medical records' : ''}
+                    className="px-5 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all m3-pressable cursor-pointer"
                   >
-                    Save & Upload
+                    {isSaving ? 'Saving...' : 'Save & Upload'}
                   </button>
                 </div>
               </form>

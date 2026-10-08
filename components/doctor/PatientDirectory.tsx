@@ -3,7 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { PatientDirectoryItem } from '../../lib/types';
 import { db } from '../../lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
+  doc,
+} from 'firebase/firestore';
 import {
   Users,
   Search,
@@ -17,16 +24,18 @@ import {
   CheckCircle2,
   Clock,
   X,
-  ShieldCheck,
-  Stethoscope,
   Thermometer,
   Cpu,
+  Mail,
+  Phone,
+  Calendar,
+  Loader2,
 } from 'lucide-react';
 
 interface PatientDirectoryProps {
-  patients: PatientDirectoryItem[];
-  onStartVideoCall: (patientName: string) => void;
-  onOpenEHR: (patientName: string, patientId?: string) => void;
+  patients?: PatientDirectoryItem[];
+  onStartVideoCall?: (patientName: string) => void;
+  onOpenEHR?: (patientName: string, patientId?: string) => void;
 }
 
 interface LivePatientIoTData {
@@ -38,16 +47,170 @@ interface LivePatientIoTData {
 }
 
 export function PatientDirectory({
-  patients,
+  patients = [],
   onStartVideoCall,
   onOpenEHR,
 }: PatientDirectoryProps) {
+  const [patientList, setPatientList] = useState<PatientDirectoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<PatientDirectoryItem | null>(null);
   const [livePatientDoc, setLivePatientDoc] = useState<any>(null);
   const [liveIoTData, setLiveIoTData] = useState<LivePatientIoTData | null>(null);
   const [isLiveListening, setIsLiveListening] = useState(false);
 
+  // Direct Firestore query: collection 'users' where role is in ['patient', 'Patient']
+  // Strictly without orderBy() to prevent missing index exceptions
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchPatients = async () => {
+      try {
+        setLoading(true);
+        const q = query(
+          collection(db, 'users'),
+          where('role', 'in', ['patient', 'Patient'])
+        );
+        const snapshot = await getDocs(q);
+        const docsData: PatientDirectoryItem[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            name: data.fullName || data.name || '',
+            email: data.email || '',
+            phone: data.phoneNumber || data.phone || '',
+            phoneNumber: data.phoneNumber || data.phone || '',
+            lastVisit: data.lastVisit || data.lastVisitDate || '',
+            lastVisitDate: data.lastVisitDate || data.lastVisit || '',
+            age: data.age || 35,
+            gender: data.gender || 'Other',
+            condition: data.condition || 'General Care',
+            status: data.status || 'Stable',
+            roomOrBed: data.roomOrBed || 'Remote Care',
+            assignedDoctor: data.assignedDoctor || 'Assigned Clinician',
+            nextAppointment: data.nextAppointment,
+            bloodGroup: data.bloodGroup || data.bloodType || '',
+            bloodType: data.bloodType || data.bloodGroup || '',
+            allergies: data.allergies || [],
+            knownAllergies: data.knownAllergies || '',
+            chronicConditions: data.chronicConditions || [],
+            currentMedications: data.currentMedications || '',
+            hasCompletedOnboarding: data.hasCompletedOnboarding === true,
+            emergencyContact: data.emergencyContact || '',
+            lastSyncedTemperature: data.lastSyncedTemperature,
+            lastSyncedAt: data.lastSyncedAt,
+            temperatureStatus: data.temperatureStatus,
+            deviceModel: data.deviceModel,
+            currentVitals: data.currentVitals || {
+              heartRate: 0,
+              spo2: 0,
+              temperature: 0,
+              bloodPressure: '--/--',
+            },
+          };
+        });
+
+        // Client-side sort alphabetically (.sort())
+        docsData.sort((a, b) => {
+          const nameA = (a.name || '').toLowerCase();
+          const nameB = (b.name || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        if (isMounted) {
+          setPatientList(docsData);
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Patient Directory Error:', error);
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchPatients();
+
+    // Set up real-time listener with exact query
+    try {
+      const q = query(
+        collection(db, 'users'),
+        where('role', 'in', ['patient', 'Patient'])
+      );
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const docsData: PatientDirectoryItem[] = snapshot.docs.map((docSnap) => {
+            const data = docSnap.data();
+            return {
+              id: docSnap.id,
+              name: data.fullName || data.name || '',
+              email: data.email || '',
+              phone: data.phoneNumber || data.phone || '',
+              phoneNumber: data.phoneNumber || data.phone || '',
+              lastVisit: data.lastVisit || data.lastVisitDate || '',
+              lastVisitDate: data.lastVisitDate || data.lastVisit || '',
+              age: data.age || 35,
+              gender: data.gender || 'Other',
+              condition: data.condition || 'General Care',
+              status: data.status || 'Stable',
+              roomOrBed: data.roomOrBed || 'Remote Care',
+              assignedDoctor: data.assignedDoctor || 'Assigned Clinician',
+              nextAppointment: data.nextAppointment,
+              bloodGroup: data.bloodGroup || data.bloodType || '',
+              bloodType: data.bloodType || data.bloodGroup || '',
+              allergies: data.allergies || [],
+              knownAllergies: data.knownAllergies || '',
+              chronicConditions: data.chronicConditions || [],
+              currentMedications: data.currentMedications || '',
+              hasCompletedOnboarding: data.hasCompletedOnboarding === true,
+              emergencyContact: data.emergencyContact || '',
+              lastSyncedTemperature: data.lastSyncedTemperature,
+              lastSyncedAt: data.lastSyncedAt,
+              temperatureStatus: data.temperatureStatus,
+              deviceModel: data.deviceModel,
+              currentVitals: data.currentVitals || {
+                heartRate: 0,
+                spo2: 0,
+                temperature: 0,
+                bloodPressure: '--/--',
+              },
+            };
+          });
+
+          // Sort alphabetically (.sort())
+          docsData.sort((a, b) => {
+            const nameA = (a.name || '').toLowerCase();
+            const nameB = (b.name || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+
+          if (isMounted) {
+            setPatientList(docsData);
+            setLoading(false);
+          }
+        },
+        (error) => {
+          console.error('Patient Directory Error:', error);
+          if (isMounted) {
+            setLoading(false);
+          }
+        }
+      );
+
+      return () => {
+        isMounted = false;
+        unsubscribe();
+      };
+    } catch (error) {
+      console.error('Patient Directory Error:', error);
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, []);
+
+  // Listen to single patient document when modal is open for live telemetry
   useEffect(() => {
     if (!selectedPatient?.id) {
       setLivePatientDoc(null);
@@ -98,15 +261,24 @@ export function PatientDirectory({
     };
   }, [selectedPatient?.id]);
 
-  const filtered = patients.filter(
-    (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.condition.toLowerCase().includes(search.toLowerCase()) ||
-      p.assignedDoctor.toLowerCase().includes(search.toLowerCase()) ||
-      (p.bloodGroup && p.bloodGroup.toLowerCase().includes(search.toLowerCase())) ||
-      (p.knownAllergies && p.knownAllergies.toLowerCase().includes(search.toLowerCase())) ||
-      (p.chronicConditions && p.chronicConditions.some((c) => c.toLowerCase().includes(search.toLowerCase())))
-  );
+  // Combine fetched list with prop fallback
+  const effectivePatients = patientList.length > 0 ? patientList : patients;
+
+  const filtered = effectivePatients.filter((p) => {
+    const q = search.toLowerCase();
+    const name = (p.name || '').toLowerCase();
+    const email = (p.email || '').toLowerCase();
+    const phone = (p.phone || p.phoneNumber || '').toLowerCase();
+    const lastVisit = (p.lastVisit || p.lastVisitDate || '').toLowerCase();
+    const condition = (p.condition || '').toLowerCase();
+    return (
+      name.includes(q) ||
+      email.includes(q) ||
+      phone.includes(q) ||
+      lastVisit.includes(q) ||
+      condition.includes(q)
+    );
+  });
 
   return (
     <div className="space-y-6">
@@ -117,7 +289,7 @@ export function PatientDirectory({
             Assigned Patient Directory
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Comprehensive roster of active remote monitoring patients, baseline telemetry & verified medical histories
+            Comprehensive roster of active remote monitoring patients, contact profiles & verified medical histories
           </p>
         </div>
 
@@ -125,7 +297,7 @@ export function PatientDirectory({
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search name, blood group, allergies, condition..."
+            placeholder="Search by name, email, phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-teal-500 bg-slate-50"
@@ -139,35 +311,50 @@ export function PatientDirectory({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200/80 text-slate-500 uppercase font-bold text-[10px] tracking-wider">
               <tr>
-                <th className="px-5 py-3.5">Patient Details</th>
-                <th className="px-5 py-3.5">Medical History & Baseline</th>
-                <th className="px-5 py-3.5">Intake Status</th>
-                <th className="px-5 py-3.5">Current Vitals</th>
-                <th className="px-5 py-3.5">Last Consultation</th>
+                <th className="px-5 py-3.5">Patient Name</th>
+                <th className="px-5 py-3.5">Email</th>
+                <th className="px-5 py-3.5">Phone Number</th>
+                <th className="px-5 py-3.5">Last Visit Date</th>
+                <th className="px-5 py-3.5">Clinical Baseline</th>
                 <th className="px-5 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
-              {filtered.length === 0 ? (
+              {loading && effectivePatients.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
+                  <td colSpan={6} className="px-5 py-14 text-center text-slate-500">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="w-6 h-6 text-teal-600 animate-spin" />
+                      <span className="text-xs font-semibold text-slate-600">
+                        Loading patient directory...
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-14 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center">
-                      <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
-                        <Users className="w-6 h-6" />
+                      <div className="w-14 h-14 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3.5 border border-teal-100 shadow-xs">
+                        <Users className="w-7 h-7" />
                       </div>
-                      <h4 className="text-sm font-semibold text-slate-800 mb-1">
-                        No patients found
+                      <h4 className="text-base font-bold text-slate-900 mb-1">
+                        {search ? 'No matching patients found' : 'No patients registered yet'}
                       </h4>
-                      <p className="text-xs text-slate-400 max-w-sm">
-                        {search ? `No patient profiles match "${search}".` : 'There are currently no registered patient records in the directory.'}
+                      <p className="text-xs text-slate-500 max-w-sm">
+                        {search
+                          ? `No patient records match "${search}". Try searching by another keyword.`
+                          : 'No patients registered yet'}
                       </p>
                     </div>
                   </td>
                 </tr>
               ) : (
                 filtered.map((pt) => {
-                  const hasAllergies = pt.knownAllergies && pt.knownAllergies.toLowerCase() !== 'none' && pt.knownAllergies.toLowerCase() !== 'none reported';
-                  const chronicList = pt.chronicConditions && pt.chronicConditions.length > 0 ? pt.chronicConditions.filter(c => c !== 'None') : [];
+                  const hasAllergies =
+                    pt.knownAllergies &&
+                    pt.knownAllergies.toLowerCase() !== 'none' &&
+                    pt.knownAllergies.toLowerCase() !== 'none reported';
 
                   return (
                     <tr
@@ -175,108 +362,102 @@ export function PatientDirectory({
                       className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
                       onClick={() => setSelectedPatient(pt)}
                     >
-                      {/* Patient Details */}
+                      {/* 1. Patient Name */}
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-800 font-bold flex items-center justify-center shrink-0 border border-teal-100">
-                            {pt.name
-                              .split(' ')
-                              .map((n) => n[0])
-                              .join('')}
+                            {pt.name && pt.name.trim() !== ''
+                              ? pt.name
+                                  .split(' ')
+                                  .map((n) => n[0])
+                                  .join('')
+                                  .slice(0, 2)
+                                  .toUpperCase()
+                              : 'PT'}
                           </div>
                           <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-bold text-slate-900 group-hover:text-teal-700 transition-colors">{pt.name}</p>
-                              {pt.bloodGroup && pt.bloodGroup !== 'Not specified' && (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold font-mono">
-                                  <Droplet className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
-                                  {pt.bloodGroup}
-                                </span>
-                              )}
-                            </div>
+                            <p className="font-bold text-slate-900 group-hover:text-teal-700 transition-colors">
+                              {pt.name && pt.name.trim() !== '' ? pt.name : 'Not provided'}
+                            </p>
                             <p className="text-[11px] text-slate-400">
-                              {pt.age} yrs • {pt.gender} • {pt.roomOrBed}
+                              {pt.age ? `${pt.age} yrs` : 'Not provided'} • {pt.gender || 'Not provided'}
                             </p>
                           </div>
                         </div>
                       </td>
 
-                      {/* Medical History & Baseline */}
+                      {/* 2. Email */}
                       <td className="px-5 py-4 text-slate-700">
-                        <div className="space-y-1 max-w-xs">
-                          {/* Chronic Conditions */}
-                          <div className="flex flex-wrap items-center gap-1">
-                            {chronicList.length > 0 ? (
-                              chronicList.map((cond) => (
-                                <span
-                                  key={cond}
-                                  className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-200 text-[10px] font-semibold"
-                                >
-                                  {cond}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-[11px] text-slate-500">No data provided</span>
-                            )}
+                        {pt.email && pt.email.trim() !== '' ? (
+                          <div className="flex items-center gap-1.5">
+                            <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="font-mono text-xs text-slate-800">{pt.email}</span>
                           </div>
+                        ) : (
+                          <span className="text-slate-400 italic">Not provided</span>
+                        )}
+                      </td>
 
-                          {/* Allergies Notice */}
-                          {hasAllergies ? (
-                            <div className="flex items-center gap-1 text-[10px] text-amber-700 font-semibold">
-                              <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
-                              <span className="truncate" title={pt.knownAllergies}>
-                                Allergy: {pt.knownAllergies}
-                              </span>
-                            </div>
+                      {/* 3. Phone Number */}
+                      <td className="px-5 py-4 text-slate-700">
+                        {(pt.phoneNumber && pt.phoneNumber.trim() !== '') ||
+                        (pt.phone && pt.phone.trim() !== '') ? (
+                          <div className="flex items-center gap-1.5">
+                            <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="font-mono text-xs text-slate-800">
+                              {pt.phoneNumber || pt.phone}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic">Not provided</span>
+                        )}
+                      </td>
+
+                      {/* 4. Last Visit Date */}
+                      <td className="px-5 py-4 text-slate-700">
+                        {(pt.lastVisit && pt.lastVisit.trim() !== '') ||
+                        (pt.lastVisitDate && pt.lastVisitDate.trim() !== '') ? (
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                            <span className="text-xs font-medium text-slate-800">
+                              {pt.lastVisit || pt.lastVisitDate}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic">Not provided</span>
+                        )}
+                      </td>
+
+                      {/* Clinical Baseline & Intake Status */}
+                      <td className="px-5 py-4">
+                        <div className="space-y-1">
+                          {pt.hasCompletedOnboarding ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <span>Intake Verified</span>
+                            </span>
                           ) : (
-                            <p className="text-[10px] text-slate-400">Allergies: No data provided</p>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              <Clock className="w-3 h-3 text-amber-600" />
+                              <span>Pending Intake</span>
+                            </span>
+                          )}
+
+                          {pt.bloodGroup && pt.bloodGroup !== 'Not specified' && (
+                            <div className="flex items-center gap-1 text-[10px] text-rose-700 font-bold font-mono">
+                              <Droplet className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
+                              <span>{pt.bloodGroup}</span>
+                            </div>
                           )}
                         </div>
                       </td>
 
-                      {/* Intake / Onboarding Status */}
-                      <td className="px-5 py-4">
-                        {pt.hasCompletedOnboarding ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            <span>Intake Verified</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            <Clock className="w-3 h-3 text-amber-600" />
-                            <span>Pending Intake</span>
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Current Vitals */}
-                      <td className="px-5 py-4 font-mono text-[11px] text-slate-700">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900">{pt.currentVitals.heartRate} BPM</span>
-                          <span>•</span>
-                          <span>{pt.currentVitals.spo2}%</span>
-                          <span>•</span>
-                          <span>{pt.currentVitals.bloodPressure}</span>
-                        </div>
-                        {pt.lastSyncedTemperature !== undefined && (
-                          <div className="mt-1 flex items-center gap-1">
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold font-mono">
-                              <Thermometer className="w-3 h-3 text-teal-600" />
-                              <span>{pt.lastSyncedTemperature.toFixed(1)}°C (IoT USB)</span>
-                            </span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Last Consultation */}
-                      <td className="px-5 py-4 text-slate-500">
-                        <p>{pt.lastVisit}</p>
-                        <p className="text-[11px] text-teal-600 font-semibold">{pt.nextAppointment}</p>
-                      </td>
-
                       {/* Actions */}
                       <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <div
+                          className="flex items-center justify-end gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <button
                             onClick={() => setSelectedPatient(pt)}
                             className="p-2 rounded-xl text-teal-700 hover:bg-teal-50 border border-teal-200 transition-all cursor-pointer"
@@ -285,21 +466,25 @@ export function PatientDirectory({
                             <ClipboardList className="w-4 h-4" />
                           </button>
 
-                          <button
-                            onClick={() => onOpenEHR(pt.name, pt.id)}
-                            className="p-2 rounded-xl text-slate-600 hover:text-teal-700 hover:bg-teal-50 border border-slate-200 transition-all cursor-pointer"
-                            title="Open EHR & Write Prescription"
-                          >
-                            <FileText className="w-4 h-4" />
-                          </button>
+                          {onOpenEHR && (
+                            <button
+                              onClick={() => onOpenEHR(pt.name || 'Patient', pt.id)}
+                              className="p-2 rounded-xl text-slate-600 hover:text-teal-700 hover:bg-teal-50 border border-slate-200 transition-all cursor-pointer"
+                              title="Open EHR & Write Prescription"
+                            >
+                              <FileText className="w-4 h-4" />
+                            </button>
+                          )}
 
-                          <button
-                            onClick={() => onStartVideoCall(pt.name)}
-                            className="p-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white shadow-xs transition-all cursor-pointer"
-                            title="Start Telehealth Video Consultation"
-                          >
-                            <Video className="w-4 h-4" />
-                          </button>
+                          {onStartVideoCall && (
+                            <button
+                              onClick={() => onStartVideoCall(pt.name || 'Patient')}
+                              className="p-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white shadow-xs transition-all cursor-pointer"
+                              title="Start Telehealth Video Consultation"
+                            >
+                              <Video className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -347,14 +532,50 @@ export function PatientDirectory({
                 )}
               </div>
 
-              <h3 className="text-xl font-black tracking-tight">{selectedPatient.name}</h3>
+              <h3 className="text-xl font-black tracking-tight">
+                {selectedPatient.name && selectedPatient.name.trim() !== ''
+                  ? selectedPatient.name
+                  : 'Not provided'}
+              </h3>
               <p className="text-xs text-slate-300 mt-0.5">
-                {selectedPatient.age} yrs • {selectedPatient.gender} • {selectedPatient.roomOrBed}
+                {selectedPatient.age ? `${selectedPatient.age} yrs` : 'Not provided'} •{' '}
+                {selectedPatient.gender || 'Not provided'} •{' '}
+                {selectedPatient.roomOrBed || 'Remote Care'}
               </p>
             </div>
 
             {/* Medical Data Details */}
             <div className="p-6 space-y-5 text-xs text-slate-700 max-h-[75vh] overflow-y-auto">
+              {/* Patient Contact & Intake Overview */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                    Email Address
+                  </span>
+                  <p className="text-xs font-semibold text-slate-800 truncate mt-0.5">
+                    {selectedPatient.email && selectedPatient.email.trim() !== ''
+                      ? selectedPatient.email
+                      : 'Not provided'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                    Phone Number
+                  </span>
+                  <p className="text-xs font-semibold text-slate-800 mt-0.5 font-mono">
+                    {selectedPatient.phoneNumber || selectedPatient.phone || 'Not provided'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                    Last Visit Date
+                  </span>
+                  <p className="text-xs font-semibold text-slate-800 mt-0.5">
+                    {selectedPatient.lastVisit || selectedPatient.lastVisitDate || 'Not provided'}
+                  </p>
+                </div>
+              </div>
+
               {/* Dedicated IoT Vitals Section (Real-Time USB Telemetry Stream) */}
               <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 text-white border border-teal-500/30 shadow-md space-y-3 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-36 h-36 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
@@ -378,7 +599,8 @@ export function PatientDirectory({
                   )}
                 </div>
 
-                {liveIoTData?.lastSyncedTemperature !== undefined && liveIoTData.lastSyncedTemperature !== null ? (
+                {liveIoTData?.lastSyncedTemperature !== undefined &&
+                liveIoTData.lastSyncedTemperature !== null ? (
                   <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/15 space-y-2.5 relative z-10">
                     <div className="flex items-baseline justify-between">
                       <div>
@@ -421,7 +643,11 @@ export function PatientDirectory({
                         <Clock className="w-3.5 h-3.5" />
                         <span>
                           {liveIoTData.lastSyncedAt
-                            ? new Date(liveIoTData.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                            ? new Date(liveIoTData.lastSyncedAt).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                              })
                             : 'Synced'}
                         </span>
                       </span>
@@ -449,7 +675,11 @@ export function PatientDirectory({
                   </div>
                 </div>
                 <span className="text-base font-black font-mono text-rose-700 bg-white px-3 py-1 rounded-xl border border-rose-200 shadow-xs">
-                  {livePatientDoc?.bloodGroup || livePatientDoc?.bloodType || selectedPatient.bloodGroup || selectedPatient.bloodType || 'No data provided'}
+                  {livePatientDoc?.bloodGroup ||
+                    livePatientDoc?.bloodType ||
+                    selectedPatient.bloodGroup ||
+                    selectedPatient.bloodType ||
+                    'Not provided'}
                 </span>
               </div>
 
@@ -461,12 +691,17 @@ export function PatientDirectory({
                 </div>
                 <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-amber-200/60 font-medium">
                   {(() => {
-                    const allergiesVal = livePatientDoc?.knownAllergies ||
-                      (Array.isArray(livePatientDoc?.allergies) ? livePatientDoc.allergies.join(', ') : '') ||
+                    const allergiesVal =
+                      livePatientDoc?.knownAllergies ||
+                      (Array.isArray(livePatientDoc?.allergies)
+                        ? livePatientDoc.allergies.join(', ')
+                        : '') ||
                       selectedPatient.knownAllergies;
-                    return allergiesVal && allergiesVal.toLowerCase() !== 'none' && allergiesVal.toLowerCase() !== 'none reported'
+                    return allergiesVal &&
+                      allergiesVal.toLowerCase() !== 'none' &&
+                      allergiesVal.toLowerCase() !== 'none reported'
                       ? allergiesVal
-                      : 'No data provided';
+                      : 'Not provided';
                   })()}
                 </p>
               </div>
@@ -479,10 +714,14 @@ export function PatientDirectory({
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {(() => {
-                    const conditions = (Array.isArray(livePatientDoc?.chronicConditions) && livePatientDoc.chronicConditions.length > 0)
-                      ? livePatientDoc.chronicConditions
-                      : selectedPatient.chronicConditions;
-                    const validConditions = conditions?.filter((c: string) => c !== 'None' && c !== 'No data provided') || [];
+                    const conditions =
+                      Array.isArray(livePatientDoc?.chronicConditions) &&
+                      livePatientDoc.chronicConditions.length > 0
+                        ? livePatientDoc.chronicConditions
+                        : selectedPatient.chronicConditions;
+                    const validConditions =
+                      conditions?.filter((c: string) => c !== 'None' && c !== 'Not provided') ||
+                      [];
 
                     if (validConditions.length > 0) {
                       return validConditions.map((cond: string) => (
@@ -494,7 +733,7 @@ export function PatientDirectory({
                         </span>
                       ));
                     }
-                    return <span className="text-slate-500 font-medium">No data provided</span>;
+                    return <span className="text-slate-500 font-medium">Not provided</span>;
                   })()}
                 </div>
               </div>
@@ -507,49 +746,60 @@ export function PatientDirectory({
                 </div>
                 <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-slate-200 font-mono whitespace-pre-wrap">
                   {(() => {
-                    const meds = livePatientDoc?.currentMedications || selectedPatient.currentMedications;
-                    return meds && meds.toLowerCase() !== 'none' && meds.toLowerCase() !== 'none reported'
+                    const meds =
+                      livePatientDoc?.currentMedications || selectedPatient.currentMedications;
+                    return meds &&
+                      meds.toLowerCase() !== 'none' &&
+                      meds.toLowerCase() !== 'none reported'
                       ? meds
-                      : 'No data provided';
+                      : 'Not provided';
                   })()}
                 </p>
               </div>
 
               {/* Emergency Contact on File */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block">Emergency Contact on File</span>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                  Emergency Contact on File
+                </span>
                 <p className="text-xs text-slate-800 font-semibold">
-                  {livePatientDoc?.emergencyContact || selectedPatient.emergencyContact || 'No data provided'}
+                  {livePatientDoc?.emergencyContact ||
+                    selectedPatient.emergencyContact ||
+                    'Not provided'}
                 </p>
               </div>
             </div>
 
             {/* Modal Actions */}
             <div className="p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
-              <button
-                onClick={() => {
-                  const ptName = selectedPatient.name;
-                  const ptId = selectedPatient.id;
-                  setSelectedPatient(null);
-                  onOpenEHR(ptName, ptId);
-                }}
-                className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <FileText className="w-4 h-4 text-teal-600" />
-                <span>Issue Prescription</span>
-              </button>
+              {onOpenEHR && (
+                <button
+                  onClick={() => {
+                    const ptName = selectedPatient.name || 'Patient';
+                    const ptId = selectedPatient.id;
+                    setSelectedPatient(null);
+                    onOpenEHR(ptName, ptId);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-teal-600" />
+                  <span>Issue Prescription</span>
+                </button>
+              )}
 
-              <button
-                onClick={() => {
-                  const ptName = selectedPatient.name;
-                  setSelectedPatient(null);
-                  onStartVideoCall(ptName);
-                }}
-                className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Video className="w-4 h-4" />
-                <span>Start Video Call</span>
-              </button>
+              {onStartVideoCall && (
+                <button
+                  onClick={() => {
+                    const ptName = selectedPatient.name || 'Patient';
+                    setSelectedPatient(null);
+                    onStartVideoCall(ptName);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Video className="w-4 h-4" />
+                  <span>Start Video Call</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

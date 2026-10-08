@@ -40,7 +40,7 @@ export function MedicalRecordsList({
   const [newType, setNewType] = useState<MedicalRecord['type']>('Lab Report');
   const [newFacility, setNewFacility] = useState('CuraLink Diagnostics');
   const [newSummary, setNewSummary] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -56,8 +56,10 @@ export function MedicalRecordsList({
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFile) {
-      setUploadError('Please select a file to upload.');
+
+    // Guard clause: alert if file is not selected
+    if (!file) {
+      alert('Please select a file first.');
       return;
     }
 
@@ -66,12 +68,11 @@ export function MedicalRecordsList({
 
     try {
       const uid = currentUser?.uid || patientId || 'patient_user';
-      const file = selectedFile;
       // Exact storage reference pattern
       const fileRef = ref(storage, `documents/${uid}/${file.name}-${Date.now()}`);
 
       // 1. Upload physical file to Firebase Storage
-      await uploadBytes(fileRef, selectedFile);
+      await uploadBytes(fileRef, file);
 
       // 2. Retrieve secure URL
       const downloadUrl = await getDownloadURL(fileRef);
@@ -82,28 +83,28 @@ export function MedicalRecordsList({
         year: 'numeric',
       });
       const fileSizeStr =
-        selectedFile.size > 1024 * 1024
-          ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`
-          : `${Math.max(1, Math.round(selectedFile.size / 1024))} KB`;
+        file.size > 1024 * 1024
+          ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+          : `${Math.max(1, Math.round(file.size / 1024))} KB`;
 
       // 3. Save downloadUrl, Document Title, Record Type, Facility, and Clinical Summary to clinical_records Firestore collection
       const clinicalRecordDoc = {
         patientId: uid,
         patientName: patientName || currentUser?.fullName || 'Patient',
         downloadUrl,
-        documentTitle: newTitle || selectedFile.name,
+        documentTitle: newTitle || file.name,
         recordType: newType,
         facility: newFacility,
         clinicalSummary: newSummary || 'Uploaded clinical diagnostics document.',
-        'Document Title': newTitle || selectedFile.name,
+        'Document Title': newTitle || file.name,
         'Record Type': newType,
         'Facility': newFacility,
         'Clinical Summary': newSummary || 'Uploaded clinical diagnostics document.',
         type: newType,
-        title: newTitle || selectedFile.name,
+        title: newTitle || file.name,
         doctorName: 'Attending Physician',
         content: {
-          title: newTitle || selectedFile.name,
+          title: newTitle || file.name,
           facility: newFacility,
           summary: newSummary || 'Uploaded clinical diagnostics document.',
           downloadUrl,
@@ -123,7 +124,7 @@ export function MedicalRecordsList({
           type: newType,
           downloadUrl,
           content: {
-            title: newTitle || selectedFile.name,
+            title: newTitle || file.name,
             facility: newFacility,
             summary: newSummary || 'Uploaded clinical diagnostics document.',
             downloadUrl,
@@ -141,7 +142,7 @@ export function MedicalRecordsList({
         patientId: uid,
         date: formattedDate,
         type: newType,
-        title: newTitle || selectedFile.name,
+        title: newTitle || file.name,
         doctorName: 'Attending Physician',
         facility: newFacility,
         fileSize: fileSizeStr,
@@ -160,14 +161,15 @@ export function MedicalRecordsList({
         setIsUploadOpen(false);
         setNewTitle('');
         setNewSummary('');
-        setSelectedFile(null);
+        setFile(null);
         setNewFacility('CuraLink Diagnostics');
         setNewType('Lab Report');
         setUploadError(null);
       }, 1000);
-    } catch (err: any) {
-      console.error('Failed to upload medical document:', err);
-      setUploadError(err?.message || 'Failed to upload document to secure storage. Please try again.');
+    } catch (error: any) {
+      console.error(error);
+      alert(error?.message || String(error));
+      setUploadError(error?.message || 'Failed to upload document to secure storage. Please try again.');
       setIsSaving(false);
     }
   };
@@ -473,7 +475,7 @@ export function MedicalRecordsList({
                   <label
                     htmlFor="medical-doc-file-input"
                     className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 ${
-                      selectedFile
+                      file
                         ? 'border-teal-500 bg-teal-50/50'
                         : 'border-slate-300 hover:border-teal-400 bg-slate-50 hover:bg-teal-50/20'
                     } ${isSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -481,30 +483,27 @@ export function MedicalRecordsList({
                     <input
                       id="medical-doc-file-input"
                       type="file"
-                      required
-                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                      accept=".pdf,image/*"
                       onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setSelectedFile(file);
-                          if (!newTitle) {
-                            setNewTitle(file.name.replace(/\.[^/.]+$/, ''));
-                          }
-                          setUploadError(null);
+                        const selected = e.target.files ? e.target.files[0] : null;
+                        setFile(selected);
+                        if (selected && !newTitle) {
+                          setNewTitle(selected.name.replace(/\.[^/.]+$/, ''));
                         }
+                        setUploadError(null);
                       }}
                       className="hidden"
                       disabled={isSaving}
                     />
-                    {selectedFile ? (
+                    {file ? (
                       <div className="flex items-center gap-3 w-full px-2">
                         <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center shrink-0">
                           <FileText className="w-5 h-5" />
                         </div>
                         <div className="text-left flex-1 min-w-0">
-                          <p className="text-xs font-bold text-slate-800 truncate">{selectedFile.name}</p>
+                          <p className="text-xs font-bold text-slate-800 truncate">{file.name}</p>
                           <p className="text-[10px] text-teal-600 font-medium">
-                            {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to upload
+                            {(file.size / (1024 * 1024)).toFixed(2)} MB • Ready to upload
                           </p>
                         </div>
                         <button
@@ -512,7 +511,7 @@ export function MedicalRecordsList({
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            setSelectedFile(null);
+                            setFile(null);
                           }}
                           disabled={isSaving}
                           className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
@@ -524,7 +523,7 @@ export function MedicalRecordsList({
                     ) : (
                       <>
                         <Upload className="w-5 h-5 text-teal-600 mx-auto" />
-                        <p className="text-xs font-bold text-slate-700">Attach Document (PDF, PNG, JPG)</p>
+                        <p className="text-xs font-bold text-slate-700">Attach Document (PDF, Image)</p>
                         <p className="text-[10px] text-slate-400">Click to browse file • Up to 25MB encrypted</p>
                       </>
                     )}
@@ -542,11 +541,11 @@ export function MedicalRecordsList({
                   </button>
                   <button
                     type="submit"
-                    disabled={isSaving || !selectedFile || !isAuthValid}
+                    disabled={isSaving || !isAuthValid}
                     title={
                       !isAuthValid
                         ? 'Sign in to upload medical records'
-                        : !selectedFile
+                        : !file
                         ? 'Please select a document file to upload'
                         : ''
                     }

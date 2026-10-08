@@ -368,14 +368,18 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
             const data = d.data();
             dir.push({
               id: d.id,
-              name: data.fullName || 'Patient',
+              name: data.fullName || data.name || 'Patient',
+              email: data.email || '',
+              phone: data.phoneNumber || data.phone || '',
+              phoneNumber: data.phoneNumber || data.phone || '',
               age: data.age || 35,
               gender: data.gender || 'Other',
               condition: data.condition || 'General Observation',
               status: 'Stable',
               roomOrBed: data.roomOrBed || 'Remote Home-Care',
               assignedDoctor: authState.currentUser?.fullName || 'Assigned Clinician',
-              lastVisit: data.lastVisit || 'Initial Intake',
+              lastVisit: data.lastVisit || data.lastVisitDate || 'Initial Intake',
+              lastVisitDate: data.lastVisitDate || data.lastVisit || '',
               nextAppointment: data.nextAppointment,
               currentVitals: {
                 heartRate: 0,

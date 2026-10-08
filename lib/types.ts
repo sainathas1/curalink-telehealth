@@ -145,7 +145,9 @@ export interface PatientDirectoryItem {
   chronicConditions?: string[];
   currentMedications?: string;
   email?: string;
+  phone?: string;
   phoneNumber?: string;
+  lastVisitDate?: string;
   emergencyContact?: string;
   hasCompletedOnboarding?: boolean;
   lastSyncedTemperature?: number;

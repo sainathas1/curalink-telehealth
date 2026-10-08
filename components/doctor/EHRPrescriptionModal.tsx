@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { Prescription, PatientDirectoryItem } from '../../lib/types';
+import { db } from '../../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import {
   X,
   Stethoscope,
@@ -14,6 +16,7 @@ import {
   AlertTriangle,
   Activity,
   Thermometer,
+  FileText,
 } from 'lucide-react';
 
 interface EHRPrescriptionModalProps {
@@ -22,6 +25,7 @@ interface EHRPrescriptionModalProps {
   onIssuePrescription: (prescription: Prescription) => void;
   defaultPatientName?: string;
   defaultPatientId?: string;
+  doctorId?: string;
   doctorName?: string;
   doctorLicense?: string;
   patientDirectory?: PatientDirectoryItem[];
@@ -33,10 +37,12 @@ export function EHRPrescriptionModal({
   onIssuePrescription,
   defaultPatientName = '',
   defaultPatientId = '',
+  doctorId = '',
   doctorName = 'Attending Physician',
   doctorLicense = 'MED-LICENSED',
   patientDirectory = [],
 }: EHRPrescriptionModalProps) {
+  const [recordType, setRecordType] = useState<'Prescription' | 'Clinical Note'>('Prescription');
   const [patientName, setPatientName] = useState(defaultPatientName);
   const [diagnosis, setDiagnosis] = useState('');
   const [medicationName, setMedicationName] = useState('');
@@ -45,6 +51,7 @@ export function EHRPrescriptionModal({
   const [duration, setDuration] = useState('');
   const [refills, setRefills] = useState<number>(1);
   const [instructions, setInstructions] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
   React.useEffect(() => {
@@ -55,26 +62,78 @@ export function EHRPrescriptionModal({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const matchedPt = patientDirectory.find(
+    (p) => (defaultPatientId && p.id === defaultPatientId) || (patientName && p.name.toLowerCase() === patientName.toLowerCase())
+  );
+  const targetPatientId = defaultPatientId || matchedPt?.id || 'patient_user';
+  const targetDoctorId = doctorId || 'attending_physician';
+  const bloodGroup = matchedPt?.bloodGroup;
+  const allergies = matchedPt?.knownAllergies;
+  const chronic = matchedPt?.chronicConditions || [];
+  const currentMeds = matchedPt?.currentMedications;
+  const hasAllergies = allergies && allergies.toLowerCase() !== 'none' && allergies.toLowerCase() !== 'none reported';
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
+
+    const recordContent = recordType === 'Prescription'
+      ? {
+          medicationName: medicationName || 'Medication Prescription',
+          dosage: dosage || 'Standard Dosage',
+          frequency: frequency || 'Daily',
+          duration: duration || '30 Days',
+          refillsLeft: refills,
+          instructions: instructions || 'Follow physician directions.',
+          diagnosis: diagnosis || 'General Clinical Evaluation',
+          dateIssued: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          validUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          status: 'Active',
+          doctorLicense,
+        }
+      : {
+          title: `Clinical Note - ${diagnosis || 'Observation'}`,
+          diagnosis: diagnosis || 'General Telehealth Observation',
+          notes: instructions || 'Patient consultation note documented during telehealth session.',
+          plan: medicationName ? `Plan: ${medicationName} ${dosage}` : 'Continue current care regimen',
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          status: 'Finalized',
+        };
+
+    try {
+      // Strict write to clinical_records collection with serverTimestamp()
+      await addDoc(collection(db, 'clinical_records'), {
+        patientId: targetPatientId,
+        doctorId: targetDoctorId,
+        doctorName,
+        patientName: patientName || 'Patient',
+        type: recordType,
+        content: recordContent,
+        createdAt: serverTimestamp(),
+      });
+    } catch (saveErr) {
+      console.warn('clinical_records write notice:', saveErr);
+    }
+
     const newRx: Prescription = {
       id: `rx_${Date.now()}`,
-      patientId: defaultPatientId || 'patient_user',
+      patientId: targetPatientId,
       patientName: patientName || 'Patient',
-      doctorId: 'attending_physician',
+      doctorId: targetDoctorId,
       doctorName,
       doctorLicense,
-      medicationName,
-      dosage,
-      frequency,
-      duration,
-      instructions,
+      medicationName: medicationName || (recordType === 'Clinical Note' ? 'Clinical Note / Observation' : 'Medication'),
+      dosage: dosage || 'N/A',
+      frequency: frequency || 'N/A',
+      duration: duration || 'N/A',
+      instructions: instructions || 'Follow physician directions.',
       dateIssued: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       validUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       refillsLeft: refills,
       status: 'Active',
     };
 
+    setIsSubmitting(false);
     setIsSuccess(true);
     setTimeout(() => {
       onIssuePrescription(newRx);
@@ -82,15 +141,6 @@ export function EHRPrescriptionModal({
       onClose();
     }, 1200);
   };
-
-  const matchedPt = patientDirectory.find(
-    (p) => p.name.toLowerCase() === patientName.toLowerCase() || (defaultPatientId && p.id === defaultPatientId)
-  );
-  const bloodGroup = matchedPt?.bloodGroup;
-  const allergies = matchedPt?.knownAllergies;
-  const chronic = matchedPt?.chronicConditions || [];
-  const currentMeds = matchedPt?.currentMedications;
-  const hasAllergies = allergies && allergies.toLowerCase() !== 'none' && allergies.toLowerCase() !== 'none reported';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 backdrop-blur-sm p-4 overflow-y-auto">
@@ -183,6 +233,34 @@ export function EHRPrescriptionModal({
               </div>
             )}
 
+            {/* Record Type Switcher Tabs */}
+            <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setRecordType('Prescription')}
+                className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  recordType === 'Prescription'
+                    ? 'bg-white text-teal-800 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Pill className="w-3.5 h-3.5 text-teal-600" />
+                <span>E-Prescription</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecordType('Clinical Note')}
+                className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  recordType === 'Clinical Note'
+                    ? 'bg-white text-teal-800 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5 text-teal-600" />
+                <span>Clinical Consultation Note</span>
+              </button>
+            </div>
+
             {/* Patient & Diagnosis Summary */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -207,106 +285,161 @@ export function EHRPrescriptionModal({
                   required
                   value={diagnosis}
                   onChange={(e) => setDiagnosis(e.target.value)}
+                  placeholder="e.g. Essential Hypertension (I10)"
                   className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold text-slate-800 focus:outline-none focus:border-teal-500"
                 />
               </div>
             </div>
 
-            {/* Medication Details */}
-            <div className="p-4 rounded-2xl bg-teal-50/50 border border-teal-100 space-y-3">
-              <div className="flex items-center gap-2 text-teal-800 font-bold">
-                <Pill className="w-4 h-4" />
-                <span>Medication Specification</span>
-              </div>
+            {recordType === 'Prescription' ? (
+              /* Medication Details for E-Prescription */
+              <div className="p-4 rounded-2xl bg-teal-50/50 border border-teal-100 space-y-3">
+                <div className="flex items-center gap-2 text-teal-800 font-bold">
+                  <Pill className="w-4 h-4" />
+                  <span>Medication Specification</span>
+                </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Medication Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Atorvastatin Calcium"
+                      value={medicationName}
+                      onChange={(e) => setMedicationName(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Dosage & Strength
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 20 mg Oral Tablet"
+                      value={dosage}
+                      onChange={(e) => setDosage(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Frequency
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Once daily"
+                      value={frequency}
+                      onChange={(e) => setFrequency(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Duration
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="30 days"
+                      value={duration}
+                      onChange={(e) => setDuration(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Refills Authorized
+                    </label>
+                    <select
+                      value={refills}
+                      onChange={(e) => setRefills(Number(e.target.value))}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
+                    >
+                      <option value={0}>0 (No Refills)</option>
+                      <option value={1}>1 Refill</option>
+                      <option value={2}>2 Refills</option>
+                      <option value={3}>3 Refills</option>
+                      <option value={5}>5 Refills</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Medication Name
+                    Pharmacy & Patient Instructions
                   </label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                    placeholder="Instructions for consumption, diet restrictions, etc."
+                    className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+              </div>
+            ) : (
+              /* Clinical Consultation Observation Note */
+              <div className="p-4 rounded-2xl bg-teal-50/50 border border-teal-100 space-y-3">
+                <div className="flex items-center gap-2 text-teal-800 font-bold">
+                  <FileText className="w-4 h-4" />
+                  <span>Clinical Consultation & Physician Observation Note</span>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    Clinical Findings & Physician Evaluation
+                  </label>
+                  <textarea
+                    rows={3}
                     required
-                    placeholder="e.g. Atorvastatin Calcium"
-                    value={medicationName}
-                    onChange={(e) => setMedicationName(e.target.value)}
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                    placeholder="Document clinical observations, symptom progression, vital signs review, and examination findings."
                     className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Dosage & Strength
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. 20 mg Oral Tablet"
-                    value={dosage}
-                    onChange={(e) => setDosage(e.target.value)}
-                    className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Recommended Care Plan / Follow-up
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Follow-up in 2 weeks with repeat lipid profile"
+                      value={medicationName}
+                      onChange={(e) => setMedicationName(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Intervention / Diagnostic Orders
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Fasting Blood Glucose, ECG"
+                      value={dosage}
+                      onChange={(e) => setDosage(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
+                    />
+                  </div>
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Frequency
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={frequency}
-                    onChange={(e) => setFrequency(e.target.value)}
-                    className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Duration
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                    className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Refills Authorized
-                  </label>
-                  <select
-                    value={refills}
-                    onChange={(e) => setRefills(Number(e.target.value))}
-                    className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
-                  >
-                    <option value={0}>0 (No Refills)</option>
-                    <option value={1}>1 Refill</option>
-                    <option value={2}>2 Refills</option>
-                    <option value={3}>3 Refills</option>
-                    <option value={5}>5 Refills</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                  Pharmacy & Patient Instructions
-                </label>
-                <textarea
-                  rows={2}
-                  value={instructions}
-                  onChange={(e) => setInstructions(e.target.value)}
-                  placeholder="Instructions for consumption, diet restrictions, etc."
-                  className="w-full p-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:border-teal-500"
-                />
-              </div>
-            </div>
+            )}
 
             {/* Physician Digital Stamp Preview */}
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between text-[11px] text-slate-600">
@@ -330,10 +463,17 @@ export function EHRPrescriptionModal({
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-bold shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <FileCheck className="w-4 h-4" />
-                <span>Digitally Sign & Issue Rx</span>
+                <span>
+                  {isSubmitting
+                    ? 'Transmitting Record...'
+                    : recordType === 'Prescription'
+                    ? 'Digitally Sign & Issue Rx'
+                    : 'Save Clinical Note to Record'}
+                </span>
               </button>
             </div>
           </form>

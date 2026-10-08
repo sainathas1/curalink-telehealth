@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useAuth } from '../hooks/useAuth';
 import { useTelemetry } from '../hooks/useTelemetry';
 import { db } from '../lib/firebase';
-import { collection, doc, setDoc, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, addDoc, query, where, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import {
   UserProfile,
   UserRole,
@@ -13,6 +13,7 @@ import {
   Appointment,
   Prescription,
   MedicalRecord,
+  ClinicalRecord,
   PatientDirectoryItem,
 } from '../lib/types';
 import { SimulationMode } from '../lib/iot-service';
@@ -45,10 +46,12 @@ interface TelehealthContextType {
   doctorAppointmentsQueue: Appointment[];
   prescriptions: Prescription[];
   medicalRecords: MedicalRecord[];
+  clinicalRecords: ClinicalRecord[];
   patientDirectory: PatientDirectoryItem[];
   addAppointment: (apt: Appointment) => void;
   addPrescription: (rx: Prescription) => void;
   addMedicalRecord: (rec: MedicalRecord) => void;
+  addClinicalNote: (patientId: string, title: string, notes: string, patientName?: string) => Promise<void>;
 
   // Modals & UI Actions
   isVideoCallOpen: boolean;
@@ -58,7 +61,8 @@ interface TelehealthContextType {
 
   isEHRModalOpen: boolean;
   targetEhrPatientName: string;
-  openEHR: (patientName?: string) => void;
+  targetEhrPatientId: string;
+  openEHR: (patientName?: string, patientId?: string) => void;
   closeEHR: () => void;
 
   isSimulatorDrawerOpen: boolean;
@@ -89,6 +93,7 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
   const [doctorAppointmentsQueue, setDoctorAppointmentsQueue] = useState<Appointment[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [clinicalRecords, setClinicalRecords] = useState<ClinicalRecord[]>([]);
   const [patientDirectory, setPatientDirectory] = useState<PatientDirectoryItem[]>([]);
 
   // Modals
@@ -97,6 +102,7 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
 
   const [isEHRModalOpen, setIsEHRModalOpen] = useState(false);
   const [targetEhrPatientName, setTargetEhrPatientName] = useState('');
+  const [targetEhrPatientId, setTargetEhrPatientId] = useState('');
 
   const [isSimulatorDrawerOpen, setIsSimulatorDrawerOpen] = useState(false);
   const [isESP32GuideOpen, setIsESP32GuideOpen] = useState(false);
@@ -153,11 +159,12 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
     };
   }, [authState.currentUser?.uid, authState.currentUser?.fullName]);
 
-  // Real-time Firestore Listeners for Prescriptions, Records, Directory
+  // Real-time Firestore Listeners for Clinical Records, Prescriptions, Records, Directory
   useEffect(() => {
     if (!authState.currentUser) {
       setPrescriptions([]);
       setMedicalRecords([]);
+      setClinicalRecords([]);
       setPatientDirectory([]);
       return;
     }
@@ -167,7 +174,76 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
     const unsubscribers: (() => void)[] = [];
 
     try {
-      // 2. Prescriptions Listener
+      // 1. Clinical Records Listener (Strict real-time sync with onSnapshot)
+      const clinicalQuery = isDoctor
+        ? query(collection(db, 'clinical_records'), where('doctorId', '==', currentUid))
+        : query(collection(db, 'clinical_records'), where('patientId', '==', currentUid));
+
+      const unsubClinical = onSnapshot(
+        clinicalQuery,
+        (snapshot) => {
+          const recs: ClinicalRecord[] = [];
+          const rxs: Prescription[] = [];
+          const medRecs: MedicalRecord[] = [];
+
+          snapshot.forEach((d) => {
+            const data = d.data();
+            const recordItem: ClinicalRecord = {
+              id: d.id,
+              patientId: data.patientId,
+              doctorId: data.doctorId,
+              doctorName: data.doctorName,
+              patientName: data.patientName,
+              type: data.type,
+              content: data.content,
+              createdAt: data.createdAt,
+            };
+            recs.push(recordItem);
+
+            const c = data.content || {};
+            if (data.type === 'Prescription') {
+              rxs.push({
+                id: d.id,
+                patientId: data.patientId,
+                patientName: data.patientName || 'Patient',
+                doctorId: data.doctorId,
+                doctorName: data.doctorName || 'Attending Physician',
+                doctorLicense: c.doctorLicense || 'MED-LICENSED',
+                medicationName: c.medicationName || 'Prescription',
+                dosage: c.dosage || 'Standard Dosage',
+                frequency: c.frequency || 'Daily',
+                duration: c.duration || '30 Days',
+                instructions: c.instructions || 'Follow physician directions.',
+                dateIssued: c.dateIssued || 'Recently',
+                validUntil: c.validUntil || 'Active',
+                refillsLeft: c.refillsLeft ?? 1,
+                status: c.status || 'Active',
+              });
+            } else {
+              medRecs.push({
+                id: d.id,
+                patientId: data.patientId,
+                date: c.date || (data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently'),
+                type: (data.type as any) || 'Clinical Summary',
+                title: c.title || (data.type === 'Clinical Note' ? `Clinical Note - ${c.diagnosis || 'Observation'}` : 'Medical Record'),
+                doctorName: data.doctorName || 'Attending Physician',
+                facility: c.facility || 'CuraLink Telehealth Network',
+                fileSize: c.fileSize || 'HIPAA Certified',
+                summary: c.summary || c.notes || c.diagnosis || 'Clinical evaluation record.',
+                downloadUrl: c.downloadUrl,
+              });
+            }
+          });
+
+          setClinicalRecords(recs);
+          if (rxs.length > 0) setPrescriptions(rxs);
+          if (medRecs.length > 0) setMedicalRecords(medRecs);
+        },
+        (err) => console.warn('clinical_records listener notice:', err.message)
+      );
+      unsubscribers.push(unsubClinical);
+
+      // 2. Prescriptions Listener (Fallback for legacy entries)
       const rxQuery = isDoctor
         ? query(collection(db, 'prescriptions'), where('doctorId', '==', currentUid))
         : query(collection(db, 'prescriptions'), where('patientId', '==', currentUid));
@@ -175,17 +251,31 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
       const unsubRx = onSnapshot(rxQuery, (snapshot) => {
         const rxs: Prescription[] = [];
         snapshot.forEach((d) => rxs.push({ ...d.data(), id: d.id } as Prescription));
-        setPrescriptions(rxs);
+        if (rxs.length > 0) {
+          setPrescriptions((prev) => {
+            const map = new Map<string, Prescription>();
+            prev.forEach((p) => map.set(p.id, p));
+            rxs.forEach((p) => map.set(p.id, p));
+            return Array.from(map.values());
+          });
+        }
       }, (err) => console.warn('Prescriptions listener notice:', err.message));
       unsubscribers.push(unsubRx);
 
-      // 3. Medical Records Listener (Patients)
+      // 3. Medical Records Listener (Fallback for legacy entries)
       if (!isDoctor) {
         const recQuery = query(collection(db, 'medicalRecords'), where('patientId', '==', currentUid));
         const unsubRec = onSnapshot(recQuery, (snapshot) => {
           const recs: MedicalRecord[] = [];
           snapshot.forEach((d) => recs.push({ ...d.data(), id: d.id } as MedicalRecord));
-          setMedicalRecords(recs);
+          if (recs.length > 0) {
+            setMedicalRecords((prev) => {
+              const map = new Map<string, MedicalRecord>();
+              prev.forEach((r) => map.set(r.id, r));
+              recs.forEach((r) => map.set(r.id, r));
+              return Array.from(map.values());
+            });
+          }
         }, (err) => console.warn('Medical records listener notice:', err.message));
         unsubscribers.push(unsubRec);
       }
@@ -257,6 +347,27 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
   const addPrescription = async (rx: Prescription) => {
     setPrescriptions((prev) => [rx, ...prev]);
     try {
+      // Strict write to clinical_records collection
+      await addDoc(collection(db, 'clinical_records'), {
+        patientId: rx.patientId,
+        doctorId: rx.doctorId || authState.currentUser?.uid || 'attending_physician',
+        doctorName: rx.doctorName || authState.currentUser?.fullName || 'Attending Physician',
+        patientName: rx.patientName,
+        type: 'Prescription',
+        content: {
+          medicationName: rx.medicationName,
+          dosage: rx.dosage,
+          frequency: rx.frequency,
+          duration: rx.duration,
+          instructions: rx.instructions,
+          dateIssued: rx.dateIssued,
+          validUntil: rx.validUntil,
+          refillsLeft: rx.refillsLeft,
+          status: rx.status || 'Active',
+          doctorLicense: rx.doctorLicense || 'MED-LICENSED',
+        },
+        createdAt: serverTimestamp(),
+      });
       await setDoc(doc(db, 'prescriptions', rx.id), rx);
     } catch (err) {
       console.warn('Notice: Firestore save prescription offline fallback:', err);
@@ -266,9 +377,47 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
   const addMedicalRecord = async (rec: MedicalRecord) => {
     setMedicalRecords((prev) => [rec, ...prev]);
     try {
+      // Strict write to clinical_records collection
+      await addDoc(collection(db, 'clinical_records'), {
+        patientId: rec.patientId,
+        doctorId: authState.currentUser?.role?.toLowerCase() === 'doctor' ? authState.currentUser.uid : 'clinician',
+        doctorName: rec.doctorName || authState.currentUser?.fullName || 'Attending Physician',
+        patientName: authState.currentUser?.fullName || 'Patient',
+        type: rec.type || 'Medical Record',
+        content: {
+          title: rec.title,
+          facility: rec.facility,
+          summary: rec.summary,
+          fileSize: rec.fileSize,
+          date: rec.date,
+          downloadUrl: rec.downloadUrl || '',
+        },
+        createdAt: serverTimestamp(),
+      });
       await setDoc(doc(db, 'medicalRecords', rec.id), rec);
     } catch (err) {
       console.warn('Notice: Firestore save medical record offline fallback:', err);
+    }
+  };
+
+  const addClinicalNote = async (patientId: string, title: string, notes: string, patientName?: string) => {
+    try {
+      await addDoc(collection(db, 'clinical_records'), {
+        patientId,
+        doctorId: authState.currentUser?.uid || 'attending_physician',
+        doctorName: authState.currentUser?.fullName || 'Attending Physician',
+        patientName: patientName || 'Patient',
+        type: 'Clinical Note',
+        content: {
+          title,
+          notes,
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          status: 'Finalized',
+        },
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Notice: Firestore save clinical note error:', err);
     }
   };
 
@@ -299,8 +448,9 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
     setActiveCallAppointment(null);
   };
 
-  const openEHR = (patientName: string = '') => {
+  const openEHR = (patientName: string = '', patientId: string = '') => {
     setTargetEhrPatientName(patientName);
+    setTargetEhrPatientId(patientId);
     setIsEHRModalOpen(true);
   };
 
@@ -317,16 +467,19 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
         doctorAppointmentsQueue,
         prescriptions,
         medicalRecords,
+        clinicalRecords,
         patientDirectory,
         addAppointment,
         addPrescription,
         addMedicalRecord,
+        addClinicalNote,
         isVideoCallOpen,
         activeCallAppointment,
         openVideoCall,
         closeVideoCall,
         isEHRModalOpen,
         targetEhrPatientName,
+        targetEhrPatientId,
         openEHR,
         closeEHR,
         isSimulatorDrawerOpen,

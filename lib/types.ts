@@ -116,6 +116,17 @@ export interface MedicalRecord {
   downloadUrl?: string;
 }
 
+export interface ClinicalRecord {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  doctorName?: string;
+  patientName?: string;
+  type: 'Prescription' | 'Clinical Note' | 'Medical Record' | 'Lab Report' | string;
+  content: any;
+  createdAt?: any;
+}
+
 export interface PatientDirectoryItem {
   id: string;
   name: string;

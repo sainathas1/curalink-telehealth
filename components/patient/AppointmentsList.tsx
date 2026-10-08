@@ -167,7 +167,7 @@ export function AppointmentsList({
                 <Calendar className="w-6 h-6" />
               </div>
               <h4 className="text-sm font-semibold text-slate-800 mb-1">
-                No appointments found
+                No records found
               </h4>
               <p className="text-xs text-slate-500 max-w-sm mb-4">
                 Schedule a virtual or in-clinic visit with a verified clinician.

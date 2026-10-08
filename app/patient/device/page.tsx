@@ -224,7 +224,7 @@ export default function ConnectedDevicesPage() {
         deviceModel: isConnected ? 'USB Sensor (Serial Stream)' : 'Biomedical Telemetry Probe',
       };
 
-      await updateDoc(userRef, updateData);
+      await setDoc(userRef, updateData, { merge: true });
 
       // Also record history item in local list
       const newItem: SyncHistoryItem = {

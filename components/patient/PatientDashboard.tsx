@@ -8,10 +8,11 @@ import {
   Appointment,
   Prescription,
   MedicalRecord,
+  ClinicalRecord,
 } from '../../lib/types';
 import { PatientTab } from '../navbar/Sidebar';
 import { db } from '../../lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import {
   Heart,
   Droplets,
@@ -57,7 +58,84 @@ export function PatientDashboard({
   };
 
   const nextAppointment = appointments.find(isScheduledAppointment);
-  const activePrescriptions = prescriptions.filter((p) => p.status === 'Active');
+
+  const [liveClinicalRecords, setLiveClinicalRecords] = useState<ClinicalRecord[]>([]);
+
+  // Real-Time Sync: Wire patient dashboard to fetch from clinical_records collection where patientId == currentUser.uid
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    try {
+      const q = query(
+        collection(db, 'clinical_records'),
+        where('patientId', '==', user.uid)
+      );
+
+      const unsub = onSnapshot(
+        q,
+        (snapshot) => {
+          const recs: ClinicalRecord[] = [];
+          snapshot.forEach((docSnap) => {
+            recs.push({ id: docSnap.id, ...docSnap.data() } as ClinicalRecord);
+          });
+          setLiveClinicalRecords(recs);
+        },
+        (err) => console.warn('Patient dashboard clinical_records onSnapshot notice:', err)
+      );
+
+      return () => unsub();
+    } catch (err) {
+      console.warn('Error subscribing to clinical_records in PatientDashboard:', err);
+    }
+  }, [user?.uid]);
+
+  // Derived Prescriptions from live clinical_records (fallback to props if none loaded yet)
+  const clinicalPrescriptions: Prescription[] = liveClinicalRecords
+    .filter((r) => r.type === 'Prescription')
+    .map((r) => {
+      const c = r.content || {};
+      return {
+        id: r.id,
+        patientId: r.patientId,
+        patientName: r.patientName || user?.fullName || 'Patient',
+        doctorId: r.doctorId,
+        doctorName: r.doctorName || 'Attending Physician',
+        doctorLicense: c.doctorLicense || 'MED-LICENSED',
+        medicationName: c.medicationName || 'Prescription',
+        dosage: c.dosage || 'Standard Dosage',
+        frequency: c.frequency || 'Daily',
+        duration: c.duration || '30 Days',
+        instructions: c.instructions || 'Follow physician directions.',
+        dateIssued: c.dateIssued || (r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently'),
+        validUntil: c.validUntil || 'Active',
+        refillsLeft: c.refillsLeft ?? 1,
+        status: (c.status as any) || 'Active',
+      };
+    });
+
+  const effectivePrescriptions = clinicalPrescriptions.length > 0 ? clinicalPrescriptions : prescriptions;
+  const activePrescriptions = effectivePrescriptions.filter((p) => p.status === 'Active');
+
+  // Derived Medical & Clinical Records from live clinical_records (fallback to props if none loaded yet)
+  const clinicalMedicalRecords: MedicalRecord[] = liveClinicalRecords
+    .filter((r) => r.type !== 'Prescription')
+    .map((r) => {
+      const c = r.content || {};
+      return {
+        id: r.id,
+        patientId: r.patientId,
+        date: c.date || (r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently'),
+        type: (r.type as any) || 'Clinical Summary',
+        title: c.title || (r.type === 'Clinical Note' ? `Clinical Note - ${c.diagnosis || 'Observation'}` : 'Medical Record'),
+        doctorName: r.doctorName || 'Attending Physician',
+        facility: c.facility || 'CuraLink Telehealth Network',
+        fileSize: c.fileSize || 'HIPAA Certified',
+        summary: c.summary || c.notes || c.diagnosis || 'Clinical consultation evaluation.',
+        downloadUrl: c.downloadUrl,
+      };
+    });
+
+  const effectiveRecords = clinicalMedicalRecords.length > 0 ? clinicalMedicalRecords : records;
 
   const [hardwareTemp, setHardwareTemp] = useState<number | null>(null);
   const [hardwareTime, setHardwareTime] = useState<string | null>(null);
@@ -169,7 +247,7 @@ export function PatientDashboard({
             ) : (
               <div className="py-6 text-center text-xs text-slate-400">
                 <Calendar className="w-6 h-6 text-slate-300 mx-auto mb-1 stroke-1" />
-                <p className="font-semibold text-slate-600">No upcoming appointments</p>
+                <p className="font-semibold text-slate-600">No records found</p>
                 <p className="text-[11px] text-slate-400 mt-0.5">Schedule a consultation to meet with a doctor.</p>
               </div>
             )}
@@ -231,7 +309,7 @@ export function PatientDashboard({
                 </div>
               ) : (
                 <div className="py-3 text-center text-xs text-slate-400">
-                  <p className="font-semibold text-slate-600">No active prescriptions</p>
+                  <p className="font-semibold text-slate-600">No records found</p>
                   <p className="text-[11px] text-slate-400 mt-0.5">Clinical medications will appear here.</p>
                 </div>
               )}
@@ -376,7 +454,7 @@ export function PatientDashboard({
             ) : (
               <div className="py-6 text-center text-xs text-slate-400">
                 <Thermometer className="w-6 h-6 text-slate-300 mx-auto mb-1 stroke-1" />
-                <p className="font-semibold text-slate-600">No USB Telemetry Synced</p>
+                <p className="font-semibold text-slate-600">No records found</p>
                 <p className="text-[11px] text-slate-400 mt-0.5">Connect your USB sensor to stream vitals.</p>
               </div>
             )}
@@ -412,9 +490,9 @@ export function PatientDashboard({
             </button>
           </div>
 
-          {records.length > 0 ? (
+          {effectiveRecords.length > 0 ? (
             <div className="mt-3 space-y-2">
-              {records.slice(0, 3).map((rec) => (
+              {effectiveRecords.slice(0, 3).map((rec) => (
                 <div
                   key={rec.id}
                   className="p-3 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors flex items-center justify-between text-xs"
@@ -431,7 +509,7 @@ export function PatientDashboard({
             </div>
           ) : (
             <div className="py-8 text-center text-xs text-slate-400">
-              <p className="font-semibold text-slate-600">No medical records found</p>
+              <p className="font-semibold text-slate-600">No records found</p>
               <p className="text-[11px] text-slate-400 mt-0.5">Uploaded diagnostic files will appear here.</p>
             </div>
           )}

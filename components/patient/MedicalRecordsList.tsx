@@ -94,7 +94,7 @@ export function MedicalRecordsList({
             <FileText className="w-6 h-6" />
           </div>
           <h4 className="text-sm font-semibold text-slate-800 mb-1">
-            No medical records found
+            No records found
           </h4>
           <p className="text-xs text-slate-500 max-w-sm mb-4">
             You don&apos;t have any uploaded medical records or lab reports yet. You can upload diagnostic PDFs or pathology reports anytime.

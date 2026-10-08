@@ -22,7 +22,7 @@ interface MultiPatientMonitorProps {
   patients: PatientDirectoryItem[];
   liveTelemetry?: LiveTelemetryPayload;
   onStartVideoCall: (patientName: string) => void;
-  onOpenEHR: (patientName: string) => void;
+  onOpenEHR: (patientName: string, patientId?: string) => void;
   onOpenSimulator: () => void;
 }
 
@@ -156,7 +156,7 @@ export function MultiPatientMonitor({
             <Radio className="w-6 h-6" />
           </div>
           <h4 className="text-sm font-semibold text-slate-800 mb-1">
-            No active patient telemetry streams
+            No records found
           </h4>
           <p className="text-xs text-slate-500 max-w-sm">
             There are currently no patients streaming IoT vitals under the selected filter. When patient IoT nodes connect or register in the ward, their live vitals will appear here in real time.
@@ -299,7 +299,7 @@ export function MultiPatientMonitor({
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => onOpenEHR(pt.name)}
+                    onClick={() => onOpenEHR(pt.name, pt.id)}
                     className="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
                   >
                     <FileText className="w-3.5 h-3.5" />

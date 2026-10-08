@@ -36,6 +36,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     closeVideoCall,
     isEHRModalOpen,
     targetEhrPatientName,
+    targetEhrPatientId,
     openEHR,
     closeEHR,
     addPrescription,
@@ -169,7 +170,10 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         onClose={closeEHR}
         onIssuePrescription={addPrescription}
         defaultPatientName={targetEhrPatientName}
+        defaultPatientId={targetEhrPatientId}
+        doctorId={currentUser?.uid}
         doctorName={currentUser?.role?.toLowerCase() === 'doctor' ? currentUser.fullName : 'Attending Physician'}
+        doctorLicense={currentUser?.licenseNumber || 'MED-LICENSED'}
         patientDirectory={patientDirectory}
       />
 

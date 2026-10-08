@@ -26,7 +26,7 @@ import {
 interface PatientDirectoryProps {
   patients: PatientDirectoryItem[];
   onStartVideoCall: (patientName: string) => void;
-  onOpenEHR: (patientName: string) => void;
+  onOpenEHR: (patientName: string, patientId?: string) => void;
 }
 
 interface LivePatientIoTData {
@@ -44,11 +44,13 @@ export function PatientDirectory({
 }: PatientDirectoryProps) {
   const [search, setSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<PatientDirectoryItem | null>(null);
+  const [livePatientDoc, setLivePatientDoc] = useState<any>(null);
   const [liveIoTData, setLiveIoTData] = useState<LivePatientIoTData | null>(null);
   const [isLiveListening, setIsLiveListening] = useState(false);
 
   useEffect(() => {
     if (!selectedPatient?.id) {
+      setLivePatientDoc(null);
       setLiveIoTData(null);
       setIsLiveListening(false);
       return;
@@ -73,6 +75,7 @@ export function PatientDirectory({
       (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
+          setLivePatientDoc(data);
           if (data.lastSyncedTemperature !== undefined) {
             setLiveIoTData({
               lastSyncedTemperature: data.lastSyncedTemperature,
@@ -85,7 +88,7 @@ export function PatientDirectory({
         }
       },
       (error) => {
-        console.warn('Doctor live IoT vitals onSnapshot notice:', error);
+        console.warn('Doctor live patient medical document onSnapshot notice:', error);
       }
     );
 
@@ -283,7 +286,7 @@ export function PatientDirectory({
                           </button>
 
                           <button
-                            onClick={() => onOpenEHR(pt.name)}
+                            onClick={() => onOpenEHR(pt.name, pt.id)}
                             className="p-2 rounded-xl text-slate-600 hover:text-teal-700 hover:bg-teal-50 border border-slate-200 transition-all cursor-pointer"
                             title="Open EHR & Write Prescription"
                           >
@@ -446,7 +449,7 @@ export function PatientDirectory({
                   </div>
                 </div>
                 <span className="text-base font-black font-mono text-rose-700 bg-white px-3 py-1 rounded-xl border border-rose-200 shadow-xs">
-                  {selectedPatient.bloodGroup && selectedPatient.bloodGroup !== 'Not specified' ? selectedPatient.bloodGroup : 'No data provided'}
+                  {livePatientDoc?.bloodGroup || livePatientDoc?.bloodType || selectedPatient.bloodGroup || selectedPatient.bloodType || 'No data provided'}
                 </span>
               </div>
 
@@ -457,7 +460,14 @@ export function PatientDirectory({
                   <span>Known Drug & Environmental Allergies</span>
                 </div>
                 <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-amber-200/60 font-medium">
-                  {selectedPatient.knownAllergies && selectedPatient.knownAllergies.toLowerCase() !== 'none' && selectedPatient.knownAllergies.toLowerCase() !== 'none reported' ? selectedPatient.knownAllergies : 'No data provided'}
+                  {(() => {
+                    const allergiesVal = livePatientDoc?.knownAllergies ||
+                      (Array.isArray(livePatientDoc?.allergies) ? livePatientDoc.allergies.join(', ') : '') ||
+                      selectedPatient.knownAllergies;
+                    return allergiesVal && allergiesVal.toLowerCase() !== 'none' && allergiesVal.toLowerCase() !== 'none reported'
+                      ? allergiesVal
+                      : 'No data provided';
+                  })()}
                 </p>
               </div>
 
@@ -468,22 +478,24 @@ export function PatientDirectory({
                   <span>Diagnosed Chronic Conditions</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {selectedPatient.chronicConditions && selectedPatient.chronicConditions.length > 0 && selectedPatient.chronicConditions[0] !== 'None' ? (
-                    selectedPatient.chronicConditions.map((cond) => (
-                      <span
-                        key={cond}
-                        className={`px-3 py-1 rounded-xl text-xs font-bold border ${
-                          cond === 'None'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : 'bg-teal-50 text-teal-800 border-teal-200'
-                        }`}
-                      >
-                        {cond}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-slate-500 font-medium">No data provided</span>
-                  )}
+                  {(() => {
+                    const conditions = (Array.isArray(livePatientDoc?.chronicConditions) && livePatientDoc.chronicConditions.length > 0)
+                      ? livePatientDoc.chronicConditions
+                      : selectedPatient.chronicConditions;
+                    const validConditions = conditions?.filter((c: string) => c !== 'None' && c !== 'No data provided') || [];
+
+                    if (validConditions.length > 0) {
+                      return validConditions.map((cond: string) => (
+                        <span
+                          key={cond}
+                          className="px-3 py-1 rounded-xl text-xs font-bold border bg-teal-50 text-teal-800 border-teal-200"
+                        >
+                          {cond}
+                        </span>
+                      ));
+                    }
+                    return <span className="text-slate-500 font-medium">No data provided</span>;
+                  })()}
                 </div>
               </div>
 
@@ -494,7 +506,20 @@ export function PatientDirectory({
                   <span>Current Medications & Dosages</span>
                 </div>
                 <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-slate-200 font-mono whitespace-pre-wrap">
-                  {selectedPatient.currentMedications && selectedPatient.currentMedications.toLowerCase() !== 'none' && selectedPatient.currentMedications.toLowerCase() !== 'none reported' ? selectedPatient.currentMedications : 'No data provided'}
+                  {(() => {
+                    const meds = livePatientDoc?.currentMedications || selectedPatient.currentMedications;
+                    return meds && meds.toLowerCase() !== 'none' && meds.toLowerCase() !== 'none reported'
+                      ? meds
+                      : 'No data provided';
+                  })()}
+                </p>
+              </div>
+
+              {/* Emergency Contact on File */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Emergency Contact on File</span>
+                <p className="text-xs text-slate-800 font-semibold">
+                  {livePatientDoc?.emergencyContact || selectedPatient.emergencyContact || 'No data provided'}
                 </p>
               </div>
             </div>
@@ -504,8 +529,9 @@ export function PatientDirectory({
               <button
                 onClick={() => {
                   const ptName = selectedPatient.name;
+                  const ptId = selectedPatient.id;
                   setSelectedPatient(null);
-                  onOpenEHR(ptName);
+                  onOpenEHR(ptName, ptId);
                 }}
                 className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
               >

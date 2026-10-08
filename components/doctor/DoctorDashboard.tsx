@@ -41,7 +41,7 @@ interface DoctorDashboardProps {
   liveTelemetry?: LiveTelemetryPayload;
   onNavigateTab: (tab: DoctorTab) => void;
   onStartVideoCall: (appointment: Appointment) => void;
-  onOpenEHR: (patientName: string) => void;
+  onOpenEHR: (patientName: string, patientId?: string) => void;
 }
 
 interface LivePatientIoTData {
@@ -179,6 +179,7 @@ export function DoctorDashboard({
       (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
+          setPatientProfiles((prev) => ({ ...prev, [selectedPatient.id]: data }));
           if (data.lastSyncedTemperature !== undefined) {
             setLiveIoTData({
               lastSyncedTemperature: data.lastSyncedTemperature,
@@ -190,7 +191,7 @@ export function DoctorDashboard({
           }
         }
       },
-      (err) => console.warn('Doctor dashboard live IoT onSnapshot notice:', err)
+      (err) => console.warn('Doctor dashboard live patient user onSnapshot notice:', err)
     );
 
     return () => {
@@ -562,7 +563,7 @@ export function DoctorDashboard({
         {displayedAppointments.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center">
             <Calendar className="w-10 h-10 text-slate-300 mb-2 stroke-1" />
-            <p className="font-bold text-slate-700 text-sm">No upcoming appointments</p>
+            <p className="font-bold text-slate-700 text-sm">No records found</p>
             <p className="text-slate-400 mt-1 max-w-sm">There are no patient consultations currently in your queue.</p>
           </div>
         ) : (
@@ -773,7 +774,7 @@ export function DoctorDashboard({
         {uniquePatientsList.length === 0 ? (
           <div className="py-10 text-center text-xs text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center">
             <Users className="w-10 h-10 text-slate-300 mb-2 stroke-1" />
-            <p className="font-bold text-slate-700 text-sm">No patients currently on record</p>
+            <p className="font-bold text-slate-700 text-sm">No records found</p>
             <p className="text-slate-400 mt-1 max-w-sm">Patient records will appear here as appointments are scheduled or assigned.</p>
           </div>
         ) : (
@@ -857,7 +858,7 @@ export function DoctorDashboard({
                       </button>
 
                       <button
-                        onClick={() => onOpenEHR(pt.name)}
+                        onClick={() => onOpenEHR(pt.name, pt.id)}
                         className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold text-[11px] transition-all flex items-center gap-1 cursor-pointer"
                         title="Open EHR & Digital Rx"
                       >
@@ -1102,8 +1103,9 @@ export function DoctorDashboard({
               <button
                 onClick={() => {
                   const ptName = selectedPatient.name;
+                  const ptId = selectedPatient.id;
                   setSelectedPatient(null);
-                  onOpenEHR(ptName);
+                  onOpenEHR(ptName, ptId);
                 }}
                 className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
               >

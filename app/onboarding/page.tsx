@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useTelehealth } from '../../context/TelehealthContext';
 
 const BLOOD_GROUPS = [
@@ -171,9 +171,9 @@ export default function OnboardingPage() {
         onboardingCompletedAt: new Date().toISOString(),
       };
 
-      // 1. Update Firestore User Document
+      // 1. Save & Merge real patient profile into Firestore
       const userRef = doc(db, 'users', firebaseUser.uid);
-      await updateDoc(userRef, updatedPayload);
+      await setDoc(userRef, updatedPayload, { merge: true });
 
       // 2. Update Telehealth Context state if present
       if (currentUser && setAuthenticatedProfile) {

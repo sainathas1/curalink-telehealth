@@ -154,7 +154,7 @@ export function VitalsChart({ history, temperatureUnit = 'C' }: VitalsChartProps
             <Activity className="w-6 h-6 animate-pulse" />
           </div>
           <h4 className="text-sm font-semibold text-slate-800 mb-1">
-            Awaiting Telemetry Data Stream
+            No records found
           </h4>
           <p className="text-xs text-slate-500 max-w-sm mb-3">
             No historical vital readings recorded yet. Once your IoT biosensor node or Firebase telemetry stream begins transmitting, real-time trends will graph here automatically.

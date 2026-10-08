@@ -80,7 +80,7 @@ export function PrescriptionsList({
             <Pill className="w-6 h-6" />
           </div>
           <h4 className="text-sm font-semibold text-slate-800 mb-1">
-            No active prescriptions
+            No records found
           </h4>
           <p className="text-xs text-slate-500 max-w-sm">
             You currently have no prescribed medications on record. When a physician writes an e-prescription during a consultation, it will appear here automatically.

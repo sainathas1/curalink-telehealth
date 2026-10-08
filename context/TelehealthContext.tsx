@@ -303,14 +303,14 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
               const medItem: MedicalRecord = {
                 id: d.id,
                 patientId: data.patientId,
-                date: c.date || 'Recently',
-                type: (data.type as any) || 'Clinical Summary',
-                title: c.title || (data.type === 'Clinical Note' ? `Clinical Note - ${c.diagnosis || 'Observation'}` : 'Medical Record'),
+                date: c.date || (data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently'),
+                type: (data.recordType as any) || (data['Record Type'] as any) || (data.type as any) || 'Clinical Summary',
+                title: data.documentTitle || data['Document Title'] || c.title || (data.type === 'Clinical Note' ? `Clinical Note - ${c.diagnosis || 'Observation'}` : 'Medical Record'),
                 doctorName: data.doctorName || 'Attending Physician',
-                facility: c.facility || 'CuraLink Telehealth Network',
+                facility: data.facility || data['Facility'] || c.facility || 'CuraLink Telehealth Network',
                 fileSize: c.fileSize || 'HIPAA Certified',
-                summary: c.summary || c.notes || c.diagnosis || 'Clinical evaluation record.',
-                downloadUrl: c.downloadUrl,
+                summary: data.clinicalSummary || data['Clinical Summary'] || c.summary || c.notes || c.diagnosis || 'Clinical evaluation record.',
+                downloadUrl: data.downloadUrl || c.downloadUrl,
               };
               setMedicalRecords((prev) => {
                 if (prev.some((m) => m.id === d.id)) return prev;

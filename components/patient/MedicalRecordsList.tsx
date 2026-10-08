@@ -2,8 +2,10 @@
 
 import React, { useState } from 'react';
 import { MedicalRecord } from '../../lib/types';
-import { db } from '../../lib/firebase';
+import { db, storage } from '../../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useTelehealth } from '../../context/TelehealthContext';
 import {
   FileText,
   Download,
@@ -14,6 +16,8 @@ import {
   Eye,
   X,
   FileCheck,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 
 interface MedicalRecordsListProps {
@@ -29,64 +33,143 @@ export function MedicalRecordsList({
   patientName,
   patientId,
 }: MedicalRecordsListProps) {
+  const { currentUser } = useTelehealth();
   const [selectedRecord, setSelectedRecord] = useState<MedicalRecord | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newType, setNewType] = useState<MedicalRecord['type']>('Lab Report');
   const [newFacility, setNewFacility] = useState('CuraLink Diagnostics');
   const [newSummary, setNewSummary] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const isAuthValid = !!patientId && patientId !== 'guest_user';
+  const activeUid = currentUser?.uid || patientId;
+  const isAuthValid = !!activeUid && activeUid !== 'guest_user';
+
+  const handleCloseModal = () => {
+    if (isSaving) return;
+    setIsUploadOpen(false);
+    setUploadError(null);
+  };
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
-
-    const docPayload = {
-      patientId: patientId || 'patient_user',
-      patientName: patientName || 'Patient',
-      type: newType,
-      content: {
-        title: newTitle || 'Lab Diagnostics Report',
-        facility: newFacility,
-        summary: newSummary || 'Patient-uploaded diagnostics summary for doctor evaluation.',
-        fileSize: '1.8 MB (PDF)',
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        downloadUrl: '',
-      },
-      createdAt: serverTimestamp(),
-    };
-
-    try {
-      // Strict write to medical_records collection
-      await addDoc(collection(db, 'medical_records'), docPayload);
-    } catch (saveErr) {
-      console.warn('medical_records document write notice:', saveErr);
+    if (!selectedFile) {
+      setUploadError('Please select a file to upload.');
+      return;
     }
 
-    const newRec: MedicalRecord = {
-      id: `rec_${Date.now()}`,
-      patientId: patientId || 'patient_user',
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      type: newType,
-      title: newTitle || 'Lab Diagnostics Report',
-      doctorName: 'Attending Physician',
-      facility: newFacility,
-      fileSize: '1.8 MB (PDF)',
-      summary: newSummary || 'Patient-uploaded diagnostics summary for doctor evaluation.',
-    };
+    setIsSaving(true);
+    setUploadError(null);
 
-    setIsSaving(false);
-    setUploadSuccess(true);
-    setTimeout(() => {
+    try {
+      const uid = currentUser?.uid || patientId || 'patient_user';
+      const file = selectedFile;
+      // Exact storage reference pattern
+      const fileRef = ref(storage, `documents/${uid}/${file.name}-${Date.now()}`);
+
+      // 1. Upload physical file to Firebase Storage
+      await uploadBytes(fileRef, selectedFile);
+
+      // 2. Retrieve secure URL
+      const downloadUrl = await getDownloadURL(fileRef);
+
+      const formattedDate = new Date().toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const fileSizeStr =
+        selectedFile.size > 1024 * 1024
+          ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`
+          : `${Math.max(1, Math.round(selectedFile.size / 1024))} KB`;
+
+      // 3. Save downloadUrl, Document Title, Record Type, Facility, and Clinical Summary to clinical_records Firestore collection
+      const clinicalRecordDoc = {
+        patientId: uid,
+        patientName: patientName || currentUser?.fullName || 'Patient',
+        downloadUrl,
+        documentTitle: newTitle || selectedFile.name,
+        recordType: newType,
+        facility: newFacility,
+        clinicalSummary: newSummary || 'Uploaded clinical diagnostics document.',
+        'Document Title': newTitle || selectedFile.name,
+        'Record Type': newType,
+        'Facility': newFacility,
+        'Clinical Summary': newSummary || 'Uploaded clinical diagnostics document.',
+        type: newType,
+        title: newTitle || selectedFile.name,
+        doctorName: 'Attending Physician',
+        content: {
+          title: newTitle || selectedFile.name,
+          facility: newFacility,
+          summary: newSummary || 'Uploaded clinical diagnostics document.',
+          downloadUrl,
+          fileSize: fileSizeStr,
+          date: formattedDate,
+        },
+        createdAt: serverTimestamp(),
+      };
+
+      await addDoc(collection(db, 'clinical_records'), clinicalRecordDoc);
+
+      // Also mirror write to medical_records for universal dashboard sync across real-time listeners
+      try {
+        await addDoc(collection(db, 'medical_records'), {
+          patientId: uid,
+          patientName: patientName || currentUser?.fullName || 'Patient',
+          type: newType,
+          downloadUrl,
+          content: {
+            title: newTitle || selectedFile.name,
+            facility: newFacility,
+            summary: newSummary || 'Uploaded clinical diagnostics document.',
+            downloadUrl,
+            fileSize: fileSizeStr,
+            date: formattedDate,
+          },
+          createdAt: serverTimestamp(),
+        });
+      } catch (mirrorErr) {
+        console.warn('medical_records mirror write notice:', mirrorErr);
+      }
+
+      const newRec: MedicalRecord = {
+        id: `rec_${Date.now()}`,
+        patientId: uid,
+        date: formattedDate,
+        type: newType,
+        title: newTitle || selectedFile.name,
+        doctorName: 'Attending Physician',
+        facility: newFacility,
+        fileSize: fileSizeStr,
+        summary: newSummary || 'Uploaded clinical diagnostics document.',
+        downloadUrl,
+      };
+
       onUploadRecord(newRec);
-      setUploadSuccess(false);
-      setIsUploadOpen(false);
-      setNewTitle('');
-      setNewSummary('');
-    }, 1000);
+
+      setIsSaving(false);
+      setUploadSuccess(true);
+
+      // Close the modal and clear the form automatically on success
+      setTimeout(() => {
+        setUploadSuccess(false);
+        setIsUploadOpen(false);
+        setNewTitle('');
+        setNewSummary('');
+        setSelectedFile(null);
+        setNewFacility('CuraLink Diagnostics');
+        setNewType('Lab Report');
+        setUploadError(null);
+      }, 1000);
+    } catch (err: any) {
+      console.error('Failed to upload medical document:', err);
+      setUploadError(err?.message || 'Failed to upload document to secure storage. Please try again.');
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -115,7 +198,7 @@ export function MedicalRecordsList({
           className="px-5 py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 self-start sm:self-auto w-full sm:w-auto"
         >
           <Upload className="w-4 h-4" />
-          <span>Upload Lab Document</span>
+          <span>Upload Medical Document</span>
         </button>
       </div>
 
@@ -180,17 +263,25 @@ export function MedicalRecordsList({
                   >
                     <Eye className="w-4 h-4" />
                   </button>
-                  <a
-                    href={`#download-${rec.id}`}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      alert(`Downloading verified clinical document: ${rec.title}`);
-                    }}
-                    className="p-2 rounded-xl text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors m3-pressable cursor-pointer"
-                    title="Download PDF"
-                  >
-                    <Download className="w-4 h-4" />
-                  </a>
+                  {rec.downloadUrl ? (
+                    <a
+                      href={rec.downloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 rounded-xl text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors m3-pressable cursor-pointer"
+                      title="Open / Download Document"
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
+                  ) : (
+                    <button
+                      onClick={() => alert(`Downloading verified clinical document: ${rec.title}`)}
+                      className="p-2 rounded-xl text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors m3-pressable cursor-pointer"
+                      title="Download Record Summary"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -247,16 +338,28 @@ export function MedicalRecordsList({
                 >
                   Close
                 </button>
-                <button
-                  onClick={() => {
-                    alert(`Downloading ${selectedRecord.title}...`);
-                    setSelectedRecord(null);
-                  }}
-                  className="px-4 py-2 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-sm transition-all m3-pressable cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Verified PDF</span>
-                </button>
+                {selectedRecord.downloadUrl ? (
+                  <a
+                    href={selectedRecord.downloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-sm transition-all m3-pressable cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>View & Download Document</span>
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => {
+                      alert(`Downloading ${selectedRecord.title}...`);
+                      setSelectedRecord(null);
+                    }}
+                    className="px-4 py-2 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-sm transition-all m3-pressable cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download Verified PDF</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -273,8 +376,9 @@ export function MedicalRecordsList({
                 <span className="text-sm font-bold">Upload Medical Document</span>
               </div>
               <button
-                onClick={() => setIsUploadOpen(false)}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors m3-pressable cursor-pointer"
+                onClick={handleCloseModal}
+                disabled={isSaving}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors m3-pressable cursor-pointer disabled:opacity-50"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -287,11 +391,18 @@ export function MedicalRecordsList({
                 </div>
                 <h4 className="text-base font-bold text-slate-900">Record Uploaded Successfully</h4>
                 <p className="text-xs text-slate-500">
-                  Your document has been securely encrypted and shared with your care team.
+                  Your document has been securely uploaded to storage and linked to your clinical history.
                 </p>
               </div>
             ) : (
               <form onSubmit={handleUploadSubmit} className="p-6 space-y-4">
+                {uploadError && (
+                  <div className="flex items-center gap-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 p-3 rounded-2xl">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                    <span>{uploadError}</span>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     Document Title
@@ -302,7 +413,8 @@ export function MedicalRecordsList({
                     placeholder="e.g., Complete Metabolic Panel, ECG Strip"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    disabled={isSaving}
+                    className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-slate-100"
                   />
                 </div>
 
@@ -314,7 +426,8 @@ export function MedicalRecordsList({
                     <select
                       value={newType}
                       onChange={(e) => setNewType(e.target.value as any)}
-                      className="w-full px-3 py-2.5 rounded-2xl border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                      disabled={isSaving}
+                      className="w-full px-3 py-2.5 rounded-2xl border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white disabled:bg-slate-100"
                     >
                       <option value="Lab Report">Lab Report</option>
                       <option value="Imaging">Imaging / X-Ray</option>
@@ -332,7 +445,8 @@ export function MedicalRecordsList({
                       required
                       value={newFacility}
                       onChange={(e) => setNewFacility(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      disabled={isSaving}
+                      className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-slate-100"
                     />
                   </div>
                 </div>
@@ -346,31 +460,106 @@ export function MedicalRecordsList({
                     placeholder="Brief findings, notes from doctor, or purpose of test..."
                     value={newSummary}
                     onChange={(e) => setNewSummary(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    disabled={isSaving}
+                    className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-slate-100"
                   />
                 </div>
 
-                <div className="border border-dashed border-slate-300 rounded-2xl p-4 text-center bg-slate-50 space-y-1">
-                  <Upload className="w-5 h-5 text-teal-600 mx-auto" />
-                  <p className="text-xs font-bold text-slate-700">Attach Document (PDF, PNG)</p>
-                  <p className="text-[10px] text-slate-400">Files up to 25MB automatically encrypted</p>
+                {/* File Attachment Dropzone */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Physical Document File <span className="text-rose-500">*</span>
+                  </label>
+                  <label
+                    htmlFor="medical-doc-file-input"
+                    className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 ${
+                      selectedFile
+                        ? 'border-teal-500 bg-teal-50/50'
+                        : 'border-slate-300 hover:border-teal-400 bg-slate-50 hover:bg-teal-50/20'
+                    } ${isSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    <input
+                      id="medical-doc-file-input"
+                      type="file"
+                      required
+                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setSelectedFile(file);
+                          if (!newTitle) {
+                            setNewTitle(file.name.replace(/\.[^/.]+$/, ''));
+                          }
+                          setUploadError(null);
+                        }
+                      }}
+                      className="hidden"
+                      disabled={isSaving}
+                    />
+                    {selectedFile ? (
+                      <div className="flex items-center gap-3 w-full px-2">
+                        <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center shrink-0">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <div className="text-left flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-800 truncate">{selectedFile.name}</p>
+                          <p className="text-[10px] text-teal-600 font-medium">
+                            {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to upload
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedFile(null);
+                          }}
+                          disabled={isSaving}
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title="Remove file"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-5 h-5 text-teal-600 mx-auto" />
+                        <p className="text-xs font-bold text-slate-700">Attach Document (PDF, PNG, JPG)</p>
+                        <p className="text-[10px] text-slate-400">Click to browse file • Up to 25MB encrypted</p>
+                      </>
+                    )}
+                  </label>
                 </div>
 
                 <div className="pt-2 flex items-center justify-end gap-2.5">
                   <button
                     type="button"
-                    onClick={() => setIsUploadOpen(false)}
-                    className="px-4 py-2 rounded-2xl text-slate-600 hover:bg-slate-100 font-bold text-xs m3-pressable cursor-pointer"
+                    onClick={handleCloseModal}
+                    disabled={isSaving}
+                    className="px-4 py-2 rounded-2xl text-slate-600 hover:bg-slate-100 font-bold text-xs m3-pressable cursor-pointer disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={isSaving || !isAuthValid}
-                    title={!isAuthValid ? 'Sign in to upload medical records' : ''}
-                    className="px-5 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all m3-pressable cursor-pointer"
+                    disabled={isSaving || !selectedFile || !isAuthValid}
+                    title={
+                      !isAuthValid
+                        ? 'Sign in to upload medical records'
+                        : !selectedFile
+                        ? 'Please select a document file to upload'
+                        : ''
+                    }
+                    className="px-5 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all m3-pressable cursor-pointer flex items-center justify-center gap-2 min-w-[130px]"
                   >
-                    {isSaving ? 'Saving...' : 'Save & Upload'}
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        <span>Uploading...</span>
+                      </>
+                    ) : (
+                      <span>Save & Upload</span>
+                    )}
                   </button>
                 </div>
               </form>
@@ -381,3 +570,4 @@ export function MedicalRecordsList({
     </div>
   );
 }
+

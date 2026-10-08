@@ -24,14 +24,21 @@ interface CallPageProps {
 export default function TelehealthCallPage({ params }: CallPageProps) {
   const router = useRouter();
   const routeParams = useParams();
-  const resolvedParams = React.use(params);
-  const appointmentId = resolvedParams?.appointmentId || (routeParams?.appointmentId as string) || '';
+  let appointmentId = (routeParams?.appointmentId as string) || '';
+  if (!appointmentId && params && typeof (params as any)?.then === 'function') {
+    try {
+      const resolved = React.use(params);
+      appointmentId = resolved?.appointmentId || '';
+    } catch {}
+  } else if (!appointmentId && (params as any)?.appointmentId) {
+    appointmentId = (params as any).appointmentId;
+  }
 
   const { currentUser } = useTelehealth();
   const [isLoading, setIsLoading] = useState(true);
   const [hasPermissionError, setHasPermissionError] = useState(false);
 
-  const displayName = currentUser?.fullName || (currentUser?.role === 'Doctor' ? 'Attending Physician' : 'Telehealth Patient');
+  const displayName = currentUser?.fullName || (currentUser?.role?.toLowerCase() === 'doctor' ? 'Attending Physician' : 'Telehealth Patient');
 
   const handleLeaveCall = () => {
     if (currentUser?.role?.toLowerCase() === 'doctor') {

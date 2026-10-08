@@ -16,7 +16,7 @@ export default function PatientIndexPage() {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
             const data = userDoc.data();
-            if (data.role === 'Patient' && data.hasCompletedOnboarding === false) {
+            if (data.role?.toLowerCase() === 'patient' && data.hasCompletedOnboarding === false) {
               router.replace('/onboarding');
               return;
             }

@@ -200,6 +200,7 @@ export function RecordAttachment({ record, preview = false }: { record: Workspac
   const attachment = record.attachment;
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [decoded, setDecoded] = useState<DecodedAttachment | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     if (!attachment) return;
@@ -219,8 +220,30 @@ export function RecordAttachment({ record, preview = false }: { record: Workspac
   const isImage = decoded?.isImage || /^data:image\//i.test(attachment);
   const isPdf = decoded?.isPdf || /^data:application\/pdf/i.test(attachment) || (!isImage && !isRemote);
 
-  const handleDownload = () => {
-    downloadAttachment(attachment, record.title, record.id);
+  const handleDownload = async () => {
+    if (!attachment) return;
+    setIsDownloading(true);
+    try {
+      if (attachment.startsWith('http://') || attachment.startsWith('https://')) {
+        const response = await fetch(attachment);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = (record.title || 'medical_record').trim();
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      } else {
+        downloadAttachment(attachment, record.title, record.id);
+      }
+    } catch {
+      downloadAttachment(attachment, record.title, record.id);
+    } finally {
+      setTimeout(() => setIsDownloading(false), 500);
+    }
   };
 
   return (
@@ -229,9 +252,20 @@ export function RecordAttachment({ record, preview = false }: { record: Workspac
         <button
           type="button"
           onClick={handleDownload}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 transition hover:border-teal-300 hover:bg-teal-50 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-teal-700"
+          disabled={isDownloading}
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 transition hover:border-teal-300 hover:bg-teal-50 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-teal-700 disabled:opacity-60"
         >
-          <Download size={14} aria-hidden="true" />Download
+          {isDownloading ? (
+            <>
+              <LoaderCircle size={14} className="motion-safe:animate-spin text-teal-700" aria-hidden="true" />
+              <span>Downloading…</span>
+            </>
+          ) : (
+            <>
+              <Download size={14} aria-hidden="true" />
+              <span>Download</span>
+            </>
+          )}
         </button>
         {previewUrl && (
           <button

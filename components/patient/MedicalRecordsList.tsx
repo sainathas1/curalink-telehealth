@@ -43,9 +43,76 @@ export function MedicalRecordsList({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const activeUid = currentUser?.uid || patientId;
   const isAuthValid = !!activeUid && activeUid !== 'guest_user';
+
+  const handleDownload = async (fileUrl: string | undefined, fileName: string, recordId?: string) => {
+    if (!fileUrl) {
+      alert(`No downloadable attachment available for: ${fileName}`);
+      return;
+    }
+
+    const activeId = recordId || fileUrl || fileName;
+    setDownloadingId(activeId);
+
+    try {
+      // Fetch file content as a blob
+      const response = await fetch(fileUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
+      }
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      let sanitizedName = (fileName || 'medical_record').trim();
+      if (!sanitizedName.includes('.')) {
+        if (blob.type.includes('pdf') || fileUrl.includes('application/pdf')) {
+          sanitizedName += '.pdf';
+        } else if (blob.type.includes('jpeg') || blob.type.includes('jpg') || fileUrl.includes('image/jpeg')) {
+          sanitizedName += '.jpg';
+        } else if (blob.type.includes('png') || fileUrl.includes('image/png')) {
+          sanitizedName += '.png';
+        } else if (blob.type.includes('webp') || fileUrl.includes('image/webp')) {
+          sanitizedName += '.webp';
+        } else {
+          sanitizedName += '.pdf';
+        }
+      }
+
+      // Programmatically click hidden anchor tag with download attribute
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = sanitizedName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => {
+        URL.revokeObjectURL(blobUrl);
+      }, 1000);
+    } catch (error) {
+      console.error('Download failed:', error);
+      try {
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.download = fileName || 'medical_record';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (fallbackErr) {
+        console.error('Fallback download error:', fallbackErr);
+        alert('Could not download document. Please try again.');
+      }
+    } finally {
+      setTimeout(() => {
+        setDownloadingId(null);
+      }, 600);
+    }
+  };
 
   const handleCloseModal = () => {
     if (isSaving) return;
@@ -296,25 +363,25 @@ export function MedicalRecordsList({
                   >
                     <Eye className="w-4 h-4" />
                   </button>
-                  {rec.downloadUrl ? (
-                    <a
-                      href={rec.downloadUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 rounded-xl text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors m3-pressable cursor-pointer"
-                      title="Open / Download Document"
-                    >
-                      <Download className="w-4 h-4" />
-                    </a>
-                  ) : (
-                    <button
-                      onClick={() => alert(`Downloading verified clinical document: ${rec.title}`)}
-                      className="p-2 rounded-xl text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors m3-pressable cursor-pointer"
-                      title="Download Record Summary"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDownload(rec.downloadUrl || rec.fileData, rec.title, rec.id)}
+                    disabled={downloadingId === rec.id}
+                    className="px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/80 font-semibold text-xs transition-colors m3-pressable cursor-pointer flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                    title={`Download ${rec.title}`}
+                  >
+                    {downloadingId === rec.id ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-700" />
+                        <span>Downloading…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5 text-teal-700" />
+                        <span>Download</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>
@@ -402,14 +469,19 @@ export function MedicalRecordsList({
                               title={selectedRecord.title}
                             />
                           </div>
-                          <a
-                            href={dataUrl}
-                            download={`${selectedRecord.title.replace(/\s+/g, '_')}.pdf`}
-                            className="inline-flex items-center gap-1.5 text-xs text-teal-700 font-bold hover:underline"
+                          <button
+                            type="button"
+                            onClick={() => handleDownload(dataUrl, `${selectedRecord.title}.pdf`, selectedRecord.id)}
+                            disabled={downloadingId === selectedRecord.id}
+                            className="inline-flex items-center gap-1.5 text-xs text-teal-700 font-bold hover:underline cursor-pointer disabled:opacity-60"
                           >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Download PDF Document</span>
-                          </a>
+                            {downloadingId === selectedRecord.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
+                            <span>{downloadingId === selectedRecord.id ? 'Downloading…' : 'Download PDF Document'}</span>
+                          </button>
                         </div>
                       );
                     }
@@ -419,14 +491,19 @@ export function MedicalRecordsList({
                         <span className="text-xs text-slate-700 truncate font-medium">
                           {selectedRecord.title}
                         </span>
-                        <a
-                          href={dataUrl}
-                          download={selectedRecord.title}
-                          className="text-xs text-teal-700 font-bold hover:underline inline-flex items-center gap-1"
+                        <button
+                          type="button"
+                          onClick={() => handleDownload(dataUrl, selectedRecord.title, selectedRecord.id)}
+                          disabled={downloadingId === selectedRecord.id}
+                          className="text-xs text-teal-700 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer disabled:opacity-60"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Download</span>
-                        </a>
+                          {downloadingId === selectedRecord.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5" />
+                          )}
+                          <span>{downloadingId === selectedRecord.id ? 'Downloading…' : 'Download'}</span>
+                        </button>
                       </div>
                     );
                   })()}
@@ -440,28 +517,24 @@ export function MedicalRecordsList({
                 >
                   Close
                 </button>
-                {selectedRecord.downloadUrl ? (
-                  <a
-                    href={selectedRecord.downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-sm transition-all m3-pressable cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>View & Download Document</span>
-                  </a>
-                ) : (
-                  <button
-                    onClick={() => {
-                      alert(`Downloading ${selectedRecord.title}...`);
-                      setSelectedRecord(null);
-                    }}
-                    className="px-4 py-2 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-sm transition-all m3-pressable cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download Verified PDF</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleDownload(selectedRecord.downloadUrl || selectedRecord.fileData, selectedRecord.title, selectedRecord.id)}
+                  disabled={downloadingId === selectedRecord.id}
+                  className="px-4 py-2 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-sm transition-all m3-pressable cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
+                >
+                  {downloadingId === selectedRecord.id ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Downloading…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Document</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

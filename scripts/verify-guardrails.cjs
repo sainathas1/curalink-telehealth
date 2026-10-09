@@ -13,7 +13,6 @@ const sourceExtension = /\.(?:[cm]?[jt]sx?|vue|svelte|html)$/;
 const sourceGlobs = ['*.ts', '*.tsx', '*.js', '*.jsx', '*.mts', '*.cts', '*.mjs', '*.cjs', '*.vue', '*.svelte', '*.html'];
 const explicitlyProtected = [
   'lib/firebase.ts',
-  'components/patient/MedicalRecordsList.tsx',
   'hooks/useTelemetry.ts',
   'lib/iot-service.ts',
   'app/patient/device/page.tsx',
@@ -84,6 +83,20 @@ try {
     const baseline = git(['show', `HEAD:${relativePath}`]);
     if (normalizeLineEndings(contents) !== normalizeLineEndings(baseline)) {
       failures.push(`${relativePath}: differs from HEAD`);
+    }
+  }
+
+  // Verify Base64 medical record upload logic in MedicalRecordsList.tsx
+  const uploadFnPattern = /const handleUploadSubmit = async [\s\S]*?\n  \};/;
+  const currentMedicalRecords = localContents('components/patient/MedicalRecordsList.tsx');
+  if (!currentMedicalRecords) {
+    failures.push('components/patient/MedicalRecordsList.tsx: protected file is missing');
+  } else {
+    const baselineMedicalRecords = git(['show', 'HEAD:components/patient/MedicalRecordsList.tsx']);
+    const currentUploadMatch = currentMedicalRecords.match(uploadFnPattern);
+    const baselineUploadMatch = baselineMedicalRecords.match(uploadFnPattern);
+    if (!currentUploadMatch || !baselineUploadMatch || normalizeLineEndings(currentUploadMatch[0]) !== normalizeLineEndings(baselineUploadMatch[0])) {
+      failures.push('components/patient/MedicalRecordsList.tsx: Base64 medical record upload logic differs from HEAD');
     }
   }
 

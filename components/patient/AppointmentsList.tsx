@@ -15,20 +15,21 @@ interface AppointmentsListProps {
 }
 
 const activeStatuses = new Set(['scheduled', 'upcoming', 'in progress']);
-const isActive = (appointment: Appointment) => activeStatuses.has(appointment.status.toLowerCase());
+const isActive = (appointment?: Appointment | null) => !!appointment?.status && activeStatuses.has(appointment.status.toLowerCase());
 
 function appointmentTimestamp(appointment: Appointment) {
+  if (!appointment?.date) return NaN;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(appointment.date)) return Date.parse(appointment.date);
-  const time = /^(\d{1,2}):(\d{2})\s*(AM|PM)/i.exec(appointment.time);
+  const time = /^(\d{1,2}):(\d{2})\s*(AM|PM)/i.exec(appointment.time || '');
   const hour = time ? Number(time[1]) % 12 + (time[3].toUpperCase() === 'PM' ? 12 : 0) : 0;
   const minute = time ? time[2] : '00';
   return Date.parse(appointment.date + 'T' + String(hour).padStart(2, '0') + ':' + minute + ':00+05:30');
 }
 
-function PaymentStatus({ appointment }: { appointment: Appointment }) {
-  const paid = appointment.paymentStatus === 'Paid';
-  const waived = appointment.paymentStatus === 'Waived';
-  return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-medium ${paid || waived ? 'bg-teal-50 text-teal-800' : 'bg-amber-50 text-amber-800'}`}>{paid ? 'Paid' : waived ? 'Fee waived' : appointment.paymentStatus === 'Pending' ? 'Payment pending' : 'Payment status unavailable'}{paid && typeof appointment.paymentAmount === 'number' ? ' · ₹' + appointment.paymentAmount : ''}</span>;
+function PaymentStatus({ appointment }: { appointment?: Appointment | null }) {
+  const paid = appointment?.paymentStatus === 'Paid';
+  const waived = appointment?.paymentStatus === 'Waived';
+  return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-medium ${paid || waived ? 'bg-teal-50 text-teal-800' : 'bg-amber-50 text-amber-800'}`}>{paid ? 'Paid' : waived ? 'Fee waived' : appointment?.paymentStatus === 'Pending' ? 'Payment pending' : 'Payment status unavailable'}{paid && typeof appointment?.paymentAmount === 'number' ? ' · ₹' + appointment.paymentAmount : ''}</span>;
 }
 
 export function AppointmentsList({ appointments, onBookAppointment, onJoinVideoCall, patientName, patientId }: AppointmentsListProps) {
@@ -38,13 +39,14 @@ export function AppointmentsList({ appointments, onBookAppointment, onJoinVideoC
   const [cancellingId, setCancellingId] = useState('');
   const [confirmCancelId, setConfirmCancelId] = useState('');
   const [error, setError] = useState('');
-  const canBook = currentUser?.uid === patientId && currentUser.role.toLowerCase() === 'patient';
-  const sorted = [...appointments].sort((left, right) => {
+  const canBook = currentUser?.uid === patientId && currentUser?.role?.toLowerCase() === 'patient';
+  const safeAppointments = appointments || [];
+  const sorted = [...safeAppointments].sort((left, right) => {
     const first = appointmentTimestamp(left);
     const second = appointmentTimestamp(right);
     return (Number.isNaN(first) ? Infinity : first) - (Number.isNaN(second) ? Infinity : second);
   });
-  const filtered = sorted.filter((appointment) => filter === 'All' || (filter === 'Upcoming' ? isActive(appointment) : appointment.status.toLowerCase() === filter.toLowerCase()));
+  const filtered = sorted.filter((appointment) => filter === 'All' || (filter === 'Upcoming' ? isActive(appointment) : (appointment?.status || '').toLowerCase() === filter.toLowerCase()));
   const next = sorted.find(isActive);
 
   const cancelAppointment = async (appointment: Appointment) => {

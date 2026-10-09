@@ -20,8 +20,20 @@ export function clinicDate() {
 
 export function WorkspaceDataNotice() {
   const { dataLoading, dataError, retryData } = useTelehealth();
-  if (dataError) return <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"><p>{dataError}</p><button type="button" onClick={retryData} className="min-h-10 rounded-lg border border-rose-200 bg-white px-3 font-semibold focus-visible:outline-2 focus-visible:outline-rose-600">Try again</button></div>;
-  if (dataLoading) return <p role="status" className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500"><LoaderCircle size={17} className="motion-safe:animate-spin" aria-hidden="true" />Loading your clinical workspace…</p>;
+  if (dataError) return <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm"><p>{dataError}</p><button type="button" onClick={retryData} className="min-h-10 rounded-xl border border-rose-200 bg-white px-3 font-semibold transition active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-rose-600">Try again</button></div>;
+  if (dataLoading) return (
+    <div role="status" aria-label="Loading clinical workspace" className="space-y-4 animate-in fade-in duration-200">
+      <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white/80 p-4 text-sm text-slate-500 shadow-sm backdrop-blur-md">
+        <LoaderCircle size={17} className="motion-safe:animate-spin text-teal-700" aria-hidden="true" />
+        <span>Loading your clinical workspace…</span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="skeleton h-28 rounded-2xl" />
+        <div className="skeleton h-28 rounded-2xl" />
+        <div className="skeleton h-28 rounded-2xl" />
+      </div>
+    </div>
+  );
   return null;
 }
 

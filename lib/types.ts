@@ -143,6 +143,7 @@ export interface PatientDirectoryItem {
   status: 'Stable' | 'Monitored' | 'Critical';
   roomOrBed?: string;
   assignedDoctor: string;
+  assignedDoctorId?: string;
   lastVisit: string;
   nextAppointment?: string;
   bloodGroup?: string;

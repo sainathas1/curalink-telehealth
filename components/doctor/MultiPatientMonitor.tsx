@@ -20,10 +20,11 @@ export function MultiPatientMonitor({ onStartVideoCall, onOpenEHR, onOpenSimulat
   const [filter, setFilter] = useState<'All' | 'With readings' | 'No readings' | 'Needs attention'>('All');
   const [notePatient, setNotePatient] = useState<{ id: string; name: string } | null>(null);
   const hasReadings = hasRecordedVitals;
-  const withReadings = patientDirectory.filter(hasReadings);
-  const needsAttention = withReadings.filter((patient) => patient.status === 'Critical');
-  const patients = patientDirectory.filter((patient) => patient.name.toLowerCase().includes(search.trim().toLowerCase()) && (filter === 'All' || (filter === 'With readings' ? hasReadings(patient) : filter === 'No readings' ? !hasReadings(patient) : hasReadings(patient) && patient.status === 'Critical')));
-  const stats = [['Patients with readings', withReadings.length], ['Need attention', needsAttention.length], ['Awaiting readings', patientDirectory.length - withReadings.length]];
+  const directory = patientDirectory || [];
+  const withReadings = directory.filter(hasReadings);
+  const needsAttention = withReadings.filter((patient) => patient?.status === 'Critical');
+  const patients = directory.filter((patient) => (patient?.name || '').toLowerCase().includes(search.trim().toLowerCase()) && (filter === 'All' || (filter === 'With readings' ? hasReadings(patient) : filter === 'No readings' ? !hasReadings(patient) : hasReadings(patient) && patient?.status === 'Critical')));
+  const stats = [['Patients with readings', withReadings.length], ['Need attention', needsAttention.length], ['Awaiting readings', directory.length - withReadings.length]];
 
   return <div className="mx-auto max-w-7xl space-y-6">
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="care-eyebrow mb-2">Connected to your patients</p><h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Patient monitoring</h1><p className="mt-2 text-sm text-slate-500">Review the recorded readings shared by patients in your care.</p></div><button type="button" onClick={onOpenSimulator} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 focus-visible:outline-2 focus-visible:outline-teal-700"><Sliders size={16} aria-hidden="true" />Open simulator</button></div>

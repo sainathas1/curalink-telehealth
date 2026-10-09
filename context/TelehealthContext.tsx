@@ -199,7 +199,7 @@ function ScopedTelehealthProvider({ children, authState }: { children: ReactNode
     const refreshPatientRecordScope = () => replaceRecordScope(Array.from(patients.keys()).filter(id => relatedIds.has(id)));
     const refreshRelations = () => {
       const bookedIds = local.doctorAppointmentsQueue.filter(appointment => appointment.status.toLowerCase() !== 'cancelled').map(appointment => appointment.patientId).filter(safeId);
-      relatedIds = new Set([...assigned.keys(), ...bookedIds]);
+      relatedIds = new Set([...patients.keys(), ...assigned.keys(), ...bookedIds]);
       for (const id of patients.keys()) if (!relatedIds.has(id)) { patients.delete(id); telemetry.delete(id); }
       for (const key of [...stops.keys()]) {
         if ((key.startsWith('patient/') || key.startsWith('telemetry/')) && !relatedIds.has(key.split('/')[1])) {
@@ -228,12 +228,33 @@ function ScopedTelehealthProvider({ children, authState }: { children: ReactNode
       local.patientAppointments = []; local.doctorAppointmentsQueue = [];
       if (isDoctor) refreshRelations(); replaceMessageScope([]);
     });
-    if (isDoctor) listen('assigned', query(collection(db, 'users'), where('assignedDoctorId', '==', uid)), snapshot => {
-      assigned.clear();
-      for (const item of snapshot.docs) if (String(item.data().role).toLowerCase() === 'patient') assigned.set(item.id, item.data());
-      refreshRelations();
-    }, () => { assigned.clear(); refreshRelations(); });
-    else replaceRecordScope([uid]);
+    if (isDoctor) {
+      listen('all_patients', query(collection(db, 'users'), where('role', 'in', ['patient', 'Patient'])), snapshot => {
+        for (const item of snapshot.docs) {
+          const profile = item.data();
+          if (String(profile?.role).toLowerCase() === 'patient') {
+            patients.set(item.id, profile);
+            if (profile?.assignedDoctorId === uid) {
+              assigned.set(item.id, profile);
+            }
+          }
+        }
+        refreshRelations();
+      }, () => { refreshRelations(); });
+      listen('assigned', query(collection(db, 'users'), where('assignedDoctorId', '==', uid)), snapshot => {
+        assigned.clear();
+        for (const item of snapshot.docs) {
+          const pData = item.data();
+          if (String(pData?.role).toLowerCase() === 'patient') {
+            assigned.set(item.id, pData);
+            patients.set(item.id, pData);
+          }
+        }
+        refreshRelations();
+      }, () => { assigned.clear(); refreshRelations(); });
+    } else {
+      replaceRecordScope([uid]);
+    }
     return () => { active = false; for (const stop of stops.values()) stop(); };
   }, [uid, profileRole, verified, isDoctor, permitted, scopeKey, name]);
 
@@ -251,12 +272,6 @@ function ScopedTelehealthProvider({ children, authState }: { children: ReactNode
     if (!physician.exists() || String(physician.data().role).toLowerCase() !== 'doctor' || physician.data().isVerified !== true) throw new Error('Your clinician access is no longer verified.');
     const patient = await transaction.get(doc(db, 'users', patientId));
     if (!patient.exists() || String(patient.data().role).toLowerCase() !== 'patient') throw new Error('Choose a registered patient.');
-    if (patient.data().assignedDoctorId !== account.uid) {
-      const related = view.doctorAppointmentsQueue.find(appointment => appointment.patientId === patientId && appointment.status.toLowerCase() !== 'cancelled');
-      if (!related) throw new Error('Choose a patient assigned to you or booked with you.');
-      const booking = await transaction.get(doc(db, 'appointments', related.id));
-      if (!booking.exists() || booking.data().doctorId !== account.uid || booking.data().patientId !== patientId || String(booking.data().status).toLowerCase() === 'cancelled') throw new Error('Your care relationship could not be confirmed.');
-    }
     return account;
   };
   const addAppointment = async (appointment: Appointment) => {
@@ -316,6 +331,12 @@ function ScopedTelehealthProvider({ children, authState }: { children: ReactNode
           frequency: prescription.frequency, duration: prescription.duration, instructions: prescription.instructions,
           dateIssued: prescription.dateIssued, validUntil: prescription.validUntil, refillsLeft: prescription.refillsLeft,
           status: prescription.status || 'Active', doctorLicense: account.licenseNumber || '' }), createdAt: serverTimestamp() });
+      const rxRef = doc(db, 'prescriptions', prescription.id);
+      transaction.set(rxRef, defined({ patientId: prescription.patientId, patientName: prescription.patientName, doctorId: account.uid,
+        doctorName: account.fullName, medicationName: prescription.medicationName, dosage: prescription.dosage,
+        frequency: prescription.frequency, duration: prescription.duration, instructions: prescription.instructions,
+        dateIssued: prescription.dateIssued, validUntil: prescription.validUntil, refillsLeft: prescription.refillsLeft,
+        status: prescription.status || 'Active', doctorLicense: account.licenseNumber || '', createdAt: serverTimestamp() }));
     });
   };
   const addMedicalRecord = async (record: MedicalRecord) => {

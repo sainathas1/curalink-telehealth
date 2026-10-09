@@ -11,6 +11,7 @@ import {
   Shield,
   Activity,
   User,
+  Menu,
 } from 'lucide-react';
 import { UserProfile, LiveTelemetryPayload } from '../../lib/types';
 
@@ -19,6 +20,7 @@ interface MobileTopAppBarProps {
   telemetry: LiveTelemetryPayload;
   onEmergencySOS: () => void;
   activeCriticalAlertsCount?: number;
+  onOpenDrawer?: () => void;
 }
 
 export function MobileTopAppBar({
@@ -26,6 +28,7 @@ export function MobileTopAppBar({
   telemetry,
   onEmergencySOS,
   activeCriticalAlertsCount = 0,
+  onOpenDrawer,
 }: MobileTopAppBarProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -62,30 +65,40 @@ export function MobileTopAppBar({
     <header
       role="banner"
       aria-label="Mobile Application Bar"
-      className="md:hidden sticky top-0 z-30 bg-slate-900/95 backdrop-blur-xl border-b border-slate-800 text-white shadow-md transition-all select-none"
+      className="md:hidden sticky top-0 z-30 bg-slate-900/80 backdrop-blur-md border-b border-white/10 text-white shadow-lg shadow-black/20 transition-all select-none"
       style={{
         paddingTop: 'max(0.6rem, env(safe-area-inset-top, 0px))',
       }}
     >
       <div className="px-4 py-2.5 flex items-center justify-between gap-3">
-        {/* Leading Item: Back button on subroutes, or brand avatar on root routes */}
-        <div className="flex items-center gap-2.5 min-w-0">
+        {/* Leading Item: Hamburger menu / Back button & Brand */}
+        <div className="flex items-center gap-2 min-w-0">
+          {onOpenDrawer && (
+            <button
+              onClick={onOpenDrawer}
+              aria-label="Open Navigation Drawer"
+              className="w-9 h-9 rounded-xl bg-slate-800/60 hover:bg-slate-700/80 active:scale-95 text-slate-200 flex items-center justify-center transition-all duration-300 border border-white/10 cursor-pointer shrink-0"
+            >
+              <Menu className="w-5 h-5 text-teal-400" />
+            </button>
+          )}
+
           {isSubroute ? (
             <button
               onClick={() => router.back()}
               aria-label="Go back"
-              className="w-9 h-9 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition-all m3-pressable cursor-pointer shrink-0"
+              className="w-9 h-9 rounded-xl bg-slate-800/60 hover:bg-slate-700/80 active:scale-95 text-slate-200 flex items-center justify-center transition-all duration-300 border border-white/10 cursor-pointer shrink-0"
             >
               <ArrowLeft className="w-5 h-5 text-teal-400" />
             </button>
           ) : (
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-teal-600 to-emerald-500 flex items-center justify-center text-white shadow-xs shrink-0">
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-teal-500 to-emerald-400 flex items-center justify-center text-white shadow-md shadow-teal-500/20 shrink-0">
               <HeartPulse className="w-5 h-5 animate-pulse" />
             </div>
           )}
 
           <div className="min-w-0">
-            <h1 className="text-base font-black tracking-tight text-white truncate leading-tight">
+            <h1 className="text-sm font-bold tracking-tight text-white truncate leading-tight">
               {getScreenTitle()}
             </h1>
             <p className="text-[11px] text-teal-300 font-medium truncate flex items-center gap-1">
@@ -109,7 +122,7 @@ export function MobileTopAppBar({
           {telemetry.heartRate > 0 && (
             <div
               onClick={() => router.push('/patient/vitals')}
-              className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-[11px] font-mono font-bold text-teal-300 flex items-center gap-1.5 m3-pressable cursor-pointer shadow-xs"
+              className="px-2.5 py-1 rounded-full bg-slate-800/60 border border-white/10 text-[11px] font-mono font-bold text-teal-300 flex items-center gap-1.5 cursor-pointer shadow-sm hover:scale-105 transition-all duration-300"
               title="View live vitals stream"
             >
               <Activity className="w-3.5 h-3.5 text-teal-400 animate-pulse" />
@@ -121,7 +134,7 @@ export function MobileTopAppBar({
           <button
             onClick={onEmergencySOS}
             aria-label="Trigger Emergency SOS"
-            className="px-3 py-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-950/60 transition-all m3-pressable flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 rounded-2xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-rose-950/60 transition-all duration-300 flex items-center gap-1.5 cursor-pointer hover:scale-105"
           >
             <AlertTriangle className="w-3.5 h-3.5 animate-pulse" />
             <span className="text-[11px] font-extrabold uppercase tracking-wider">SOS</span>

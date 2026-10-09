@@ -9,6 +9,8 @@ import { TopHeader } from '../../components/navbar/TopHeader';
 import { MobileTopAppBar } from '../../components/navbar/MobileTopAppBar';
 import { Sidebar, PatientTab } from '../../components/navbar/Sidebar';
 import { MobileNav } from '../../components/navbar/MobileNav';
+import { MobileDrawer } from '../../components/navbar/MobileDrawer';
+import { ErrorBoundary } from '../../components/ui/ErrorBoundary';
 
 import { VideoCallModal } from '../../components/doctor/VideoCallModal';
 import { HardwareSimulatorDrawer } from '../../components/iot/HardwareSimulatorDrawer';
@@ -22,6 +24,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
   const router = useRouter();
   const pathname = usePathname();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [, setIsOnboardingChecked] = useState(false);
 
   const {
@@ -160,6 +163,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
         telemetry={telemetry}
         onEmergencySOS={openEmergencySOS}
         activeCriticalAlertsCount={telemetry.status === 'critical' ? 1 : 0}
+        onOpenDrawer={() => setIsMobileDrawerOpen(true)}
       />
 
       {/* Desktop Top Header (Hidden on Mobile) */}
@@ -175,6 +179,8 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
           onToggleSimulatorDrawer={openSimulator}
           onOpenHardwareGuide={openESP32Guide}
           activeCriticalAlertsCount={telemetry.status === 'critical' ? 1 : 0}
+          activeTab={activeTab}
+          onSelectTab={handleSelectTab}
         />
       </div>
 
@@ -192,14 +198,16 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
 
         {/* Main Content Area - padded at bottom for persistent mobile bottom navigation bar */}
         <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto pb-24 md:pb-8">
-          <motion.div
-            key={pathname}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-          >
-            {children}
-          </motion.div>
+          <ErrorBoundary sectionName="Patient Portal">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              {children}
+            </motion.div>
+          </ErrorBoundary>
         </main>
       </div>
 
@@ -255,6 +263,23 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
           else router.push('/patient/dashboard');
         }}
         initialRole="Patient"
+      />
+
+      <MobileDrawer
+        isOpen={isMobileDrawerOpen}
+        onClose={() => setIsMobileDrawerOpen(false)}
+        role="Patient"
+        activeTab={activeTab}
+        onSelectTab={(tab) => {
+          handleSelectTab(tab);
+          setIsMobileDrawerOpen(false);
+        }}
+        currentUser={currentUser}
+        onToggleRole={handleToggleRole}
+        onLogout={handleLogout}
+        onOpenAuth={openAuthModal}
+        onEmergencySOS={openEmergencySOS}
+        activeAlertCount={criticalCount}
       />
     </div>
   );

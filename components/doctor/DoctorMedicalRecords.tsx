@@ -225,7 +225,7 @@ export function DoctorMedicalRecords() {
 
         {/* Filter Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-          {recordTypes.map((type) => (
+          {(recordTypes || []).map((type) => (
             <button
               key={type}
               onClick={() => setFilterType(type)}
@@ -247,7 +247,7 @@ export function DoctorMedicalRecords() {
           <div className="w-10 h-10 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-xs font-bold text-slate-700">Loading Clinical Records...</p>
         </div>
-      ) : filteredRecords.length === 0 ? (
+      ) : (filteredRecords || []).length === 0 ? (
         <div className="py-16 text-center bg-white rounded-3xl border border-slate-200 p-8 shadow-xs">
           <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mx-auto mb-3">
             <FileText className="w-6 h-6" />
@@ -261,7 +261,7 @@ export function DoctorMedicalRecords() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredRecords.map((record) => {
+          {(filteredRecords || []).map((record) => {
             const hasFile = !!(record.fileData || record.downloadUrl);
             const isImg = isImageFile(record);
             const isPdf = isPdfFile(record);

@@ -14,6 +14,7 @@ import { ESP32GuideModal } from '../../components/iot/ESP32GuideModal';
 import { AuthModal } from '../../components/auth/AuthModal';
 import { ShieldAlert } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { ErrorBoundary } from '../../components/ui/ErrorBoundary';
 
 export default function DoctorLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -129,6 +130,8 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         onToggleSimulatorDrawer={openSimulator}
         onOpenHardwareGuide={openESP32Guide}
         activeCriticalAlertsCount={criticalCount}
+        activeTab={activeTab}
+        onSelectTab={handleSelectTab}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -143,14 +146,16 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
-          <motion.div
-            key={pathname}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-          >
-            {children}
-          </motion.div>
+          <ErrorBoundary sectionName="Doctor Clinical Portal">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              {children}
+            </motion.div>
+          </ErrorBoundary>
         </main>
       </div>
 

@@ -418,7 +418,7 @@ export function DoctorDashboard({
     });
 
     return list;
-  }, [displayedAppointments, patients, patientProfiles, doctor.fullName]);
+  }, [displayedAppointments, patients, patientProfiles, doctor?.fullName]);
 
   return (
     <div className="space-y-6">
@@ -640,10 +640,10 @@ export function DoctorDashboard({
           </div>
         ) : (
           <div className="space-y-3">
-            {displayedAppointments.map((apt, index) => {
+            {(displayedAppointments || []).map((apt, index) => {
               const profile = patientProfiles[apt.patientId] || {};
-              const matchedPt = patients.find(
-                (p) => p.id === apt.patientId || p.name.toLowerCase() === apt.patientName.toLowerCase()
+              const matchedPt = (patients || []).find(
+                (p) => p?.id === apt?.patientId || p?.name?.toLowerCase() === apt?.patientName?.toLowerCase()
               );
 
               // Graceful Fallbacks: If patient medical data is missing, display 'No data provided'
@@ -679,9 +679,9 @@ export function DoctorDashboard({
               >
                 <div className="flex items-start gap-3.5">
                   <div className="w-11 h-11 rounded-2xl bg-teal-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
-                    {apt.patientName
+                    {(apt.patientName || 'Patient')
                       .split(' ')
-                      .map((n) => n[0])
+                      .map((n) => (n || '')[0] || '')
                       .join('')}
                   </div>
 
@@ -730,7 +730,7 @@ export function DoctorDashboard({
                           <span>Allergies: No data provided</span>
                         </span>
                       )}
-                      {chronic.map((c: string) => (
+                      {(chronic || []).map((c: string) => (
                         <span
                           key={c}
                           className={`px-2 py-0.5 rounded-md border text-[10px] ${
@@ -851,7 +851,7 @@ export function DoctorDashboard({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {uniquePatientsList.map((pt) => {
+            {(uniquePatientsList || []).map((pt) => {
               const hasAllergies = pt.knownAllergies && pt.knownAllergies !== 'No data provided' && pt.knownAllergies.toLowerCase() !== 'none';
               const chronicList = pt.chronicConditions && pt.chronicConditions.length > 0 && pt.chronicConditions[0] !== 'None'
                 ? pt.chronicConditions
@@ -864,9 +864,9 @@ export function DoctorDashboard({
                 >
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-800 font-bold flex items-center justify-center shrink-0 border border-teal-100">
-                      {pt.name
+                      {(pt.name || 'Patient')
                         .split(' ')
-                        .map((n) => n[0])
+                        .map((n) => (n || '')[0] || '')
                         .join('')}
                     </div>
 
@@ -898,7 +898,7 @@ export function DoctorDashboard({
                           </span>
                         )}
 
-                        {chronicList.map((c: string) => (
+                        {(chronicList || []).map((c: string) => (
                           <span
                             key={c}
                             className={`px-2 py-0.5 rounded-md border text-[10px] ${
@@ -1131,11 +1131,11 @@ export function DoctorDashboard({
                   <span>Diagnosed Chronic Conditions</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {((selectedPatient.chronicConditions && selectedPatient.chronicConditions.length > 0 && selectedPatient.chronicConditions[0] !== 'None' && selectedPatient.chronicConditions[0] !== 'No data provided') ||
-                    (patientProfiles[selectedPatient.id]?.chronicConditions && patientProfiles[selectedPatient.id]?.chronicConditions.length > 0 && patientProfiles[selectedPatient.id]?.chronicConditions[0] !== 'None')) ? (
-                    ((selectedPatient.chronicConditions && selectedPatient.chronicConditions.length > 0 && selectedPatient.chronicConditions[0] !== 'None' && selectedPatient.chronicConditions[0] !== 'No data provided')
+                  {((selectedPatient?.chronicConditions && selectedPatient.chronicConditions.length > 0 && selectedPatient.chronicConditions[0] !== 'None' && selectedPatient.chronicConditions[0] !== 'No data provided') ||
+                    (patientProfiles[selectedPatient?.id]?.chronicConditions && patientProfiles[selectedPatient.id]?.chronicConditions.length > 0 && patientProfiles[selectedPatient.id]?.chronicConditions[0] !== 'None')) ? (
+                    ((selectedPatient?.chronicConditions && selectedPatient.chronicConditions.length > 0 && selectedPatient.chronicConditions[0] !== 'None' && selectedPatient.chronicConditions[0] !== 'No data provided')
                       ? selectedPatient.chronicConditions
-                      : patientProfiles[selectedPatient.id].chronicConditions
+                      : (patientProfiles[selectedPatient?.id]?.chronicConditions || [])
                     ).map((cond: string) => (
                       <span
                         key={cond}
@@ -1161,10 +1161,10 @@ export function DoctorDashboard({
                   <span>Current Medications & Dosages</span>
                 </div>
                 <p className="text-xs text-slate-800 bg-white p-3 rounded-xl border border-slate-200 font-mono whitespace-pre-wrap">
-                  {selectedPatient.currentMedications && selectedPatient.currentMedications.toLowerCase() !== 'none reported' && selectedPatient.currentMedications.toLowerCase() !== 'none'
+                  {selectedPatient?.currentMedications && selectedPatient.currentMedications.toLowerCase() !== 'none reported' && selectedPatient.currentMedications.toLowerCase() !== 'none'
                     ? selectedPatient.currentMedications
-                    : patientProfiles[selectedPatient.id]?.currentMedications && patientProfiles[selectedPatient.id]?.currentMedications.toLowerCase() !== 'none'
-                      ? patientProfiles[selectedPatient.id]?.currentMedications
+                    : patientProfiles[selectedPatient?.id]?.currentMedications && patientProfiles[selectedPatient.id]?.currentMedications.toLowerCase() !== 'none'
+                      ? patientProfiles[selectedPatient?.id]?.currentMedications
                       : 'No data provided'}
                 </p>
               </div>
@@ -1175,7 +1175,7 @@ export function DoctorDashboard({
                   <div className="flex items-center gap-2">
                     <FileText className="w-4 h-4 text-teal-600" />
                     <span className="font-bold text-slate-900 text-xs">
-                      Uploaded Diagnostic Records ({patientRecords.length})
+                      Uploaded Diagnostic Records ({(patientRecords || []).length})
                     </span>
                   </div>
                   <span className="text-[10px] font-mono text-teal-700 bg-white px-2 py-0.5 rounded-full border border-teal-200">
@@ -1183,13 +1183,13 @@ export function DoctorDashboard({
                   </span>
                 </div>
 
-                {patientRecords.length === 0 ? (
+                {(patientRecords || []).length === 0 ? (
                   <p className="text-xs text-slate-500 bg-white p-3 rounded-xl border border-teal-100 text-center">
                     No clinical documents or diagnostics uploaded by this patient yet.
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {patientRecords.map((rec) => {
+                    {(patientRecords || []).map((rec) => {
                       const isImg =
                         rec.fileData?.startsWith('data:image/') ||
                         rec.type === 'Imaging' ||
@@ -1315,9 +1315,9 @@ export function DoctorDashboard({
                       patientName: selectedPatient.name,
                       patientEmail: selectedPatient.email || 'No data provided',
                       patientPhone: selectedPatient.phoneNumber || 'No data provided',
-                      doctorId: doctor.uid,
-                      doctorName: doctor.fullName,
-                      doctorSpecialty: doctor.specialty || 'Telehealth Care',
+                      doctorId: doctor?.uid || 'doctor_attending',
+                      doctorName: doctor?.fullName || 'Attending Physician',
+                      doctorSpecialty: doctor?.specialty || 'Telehealth Care',
                       date: 'Today',
                       time: 'Now',
                       type: 'Video Call',

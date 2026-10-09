@@ -39,7 +39,7 @@ export function MultiPatientMonitor({
   const activeTelemetry = liveTelemetry;
 
   // Update patient card with live telemetry stream if patient matches
-  const updatedPatients = patients.map((pt) => {
+  const updatedPatients = (patients || []).map((pt) => {
     if (activeTelemetry && pt.id === activeTelemetry.patientId) {
       const isStandby = !activeTelemetry.sensorConnected || activeTelemetry.heartRate === 0;
       const status = isStandby
@@ -64,11 +64,11 @@ export function MultiPatientMonitor({
     return pt;
   });
 
-  const filtered = updatedPatients.filter((pt) => {
+  const filtered = (updatedPatients || []).filter((pt) => {
     const matchesFilter = filter === 'All' ? true : pt.status === filter;
     const matchesSearch =
-      pt.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pt.condition.toLowerCase().includes(searchQuery.toLowerCase());
+      (pt?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (pt?.condition || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
 
@@ -164,7 +164,7 @@ export function MultiPatientMonitor({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filtered.map((pt) => {
+          {(filtered || []).map((pt) => {
           const isCritical = pt.status === 'Critical';
           const isMonitored = pt.status === 'Monitored';
 
@@ -190,9 +190,9 @@ export function MultiPatientMonitor({
                           : 'bg-teal-50 text-teal-800 border border-teal-200/70'
                       }`}
                     >
-                      {pt.name
+                      {(pt.name || 'Patient')
                         .split(' ')
-                        .map((n) => n[0])
+                        .map((n) => n[0] || '')
                         .join('')}
                     </div>
                     <div>

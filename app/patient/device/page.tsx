@@ -65,7 +65,7 @@ export default function ConnectedDevicesPage() {
 
   // Check Web Serial support
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'serial' in navigator) {
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && 'serial' in navigator) {
       setIsSerialSupported(true);
     }
   }, []);
@@ -105,7 +105,7 @@ export default function ConnectedDevicesPage() {
 
   // Connect to Web Serial USB Device
   const handleConnectUSB = async () => {
-    if (!('serial' in navigator)) {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined' || !('serial' in navigator)) {
       alert('Web Serial API is not supported by your browser. Please use Chrome, Edge, or Opera on Desktop.');
       return;
     }
@@ -522,17 +522,17 @@ export default function ConnectedDevicesPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
                 <span>Serial Stream Monitor</span>
-                <span>{rawLogs.length} events</span>
+                <span>{(rawLogs || []).length} events</span>
               </div>
               <div className="bg-slate-950 text-emerald-400 rounded-2xl p-4 font-mono text-xs h-56 overflow-y-auto border border-slate-800 space-y-1 shadow-inner">
-                {rawLogs.length === 0 ? (
+                {(rawLogs || []).length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-slate-600 text-center">
                     <Radio className="w-6 h-6 mb-2 stroke-1" />
                     <p>Sensor stream on standby.</p>
                     <p className="text-[10px]">Click &quot;Connect USB Sensor&quot; or select a calibration preset.</p>
                   </div>
                 ) : (
-                  rawLogs.map((log, i) => (
+                  (rawLogs || []).map((log, i) => (
                     <div key={i} className="leading-relaxed">
                       {log}
                     </div>
@@ -561,14 +561,14 @@ export default function ConnectedDevicesPage() {
               Readings synced below are broadcast instantly via Firestore WebSocket listeners directly to your attending clinician&apos;s EHR workspace.
             </p>
 
-            {syncHistory.length === 0 ? (
+            {(syncHistory || []).length === 0 ? (
               <div className="p-6 text-center rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-400">
                 <Clock className="w-6 h-6 mx-auto mb-1 text-slate-300" />
                 No readings recorded in this session yet. Sync a temperature reading above.
               </div>
             ) : (
               <div className="space-y-2">
-                {syncHistory.map((item) => (
+                {(syncHistory || []).map((item) => (
                   <div
                     key={item.id}
                     className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs"

@@ -221,7 +221,7 @@ export default function AdminMasterCommandCenterPage() {
   };
 
   // Filtered Doctors
-  const filteredDoctors = doctors.filter((doc) => {
+  const filteredDoctors = (doctors || []).filter((doc) => {
     if (doctorFilter === 'verified' && !doc.isVerified) return false;
     if (doctorFilter === 'pending' && doc.isVerified) return false;
 
@@ -240,9 +240,9 @@ export default function AdminMasterCommandCenterPage() {
   });
 
   // Clinician Metrics
-  const totalDoctorsCount = doctors.length;
-  const verifiedDoctorsCount = doctors.filter((d) => d.isVerified).length;
-  const pendingDoctorsCount = doctors.filter((d) => !d.isVerified).length;
+  const totalDoctorsCount = (doctors || []).length;
+  const verifiedDoctorsCount = (doctors || []).filter((d) => d.isVerified).length;
+  const pendingDoctorsCount = (doctors || []).filter((d) => !d.isVerified).length;
 
   // Loading Screen
   if (authLoading) {
@@ -594,7 +594,7 @@ export default function AdminMasterCommandCenterPage() {
                 <RefreshCw className="w-8 h-8 text-teal-400 animate-spin mx-auto" />
                 <p className="text-xs text-slate-400 font-mono">Querying clinician registry from Firestore...</p>
               </div>
-            ) : filteredDoctors.length === 0 ? (
+            ) : (filteredDoctors || []).length === 0 ? (
               <div className="py-16 px-6 text-center space-y-3">
                 <Stethoscope className="w-10 h-10 text-slate-600 mx-auto stroke-1" />
                 <h3 className="text-base font-bold text-white tracking-tight">No Doctors Found</h3>
@@ -618,7 +618,7 @@ export default function AdminMasterCommandCenterPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
-                    {filteredDoctors.map((docItem) => {
+                    {(filteredDoctors || []).map((docItem) => {
                       const isActing = actionDoctorId === docItem.id;
                       const isVerified = docItem.isVerified === true;
 
@@ -632,10 +632,10 @@ export default function AdminMasterCommandCenterPage() {
                               </div>
                               <div>
                                 <div className="font-semibold text-white text-xs group-hover:text-teal-300 transition-colors">
-                                  {docItem.fullName}
+                                  {docItem.fullName || 'Clinician'}
                                 </div>
                                 <div className="text-[10px] text-slate-400 font-mono">
-                                  UID: {docItem.id.slice(0, 10)}...
+                                  UID: {(docItem.id || '').slice(0, 10)}...
                                 </div>
                               </div>
                             </div>

@@ -369,7 +369,7 @@ export default function PatientProfileRoute() {
           <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-1.5">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Diagnosed Chronic Conditions</span>
             <div className="flex flex-wrap gap-1.5">
-              {chronicConditions.map((cond: string) => (
+              {(Array.isArray(chronicConditions) ? chronicConditions : []).map((cond: string) => (
                 <span
                   key={cond}
                   className={`px-2.5 py-0.5 rounded-lg text-xs font-semibold border ${

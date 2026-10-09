@@ -29,19 +29,20 @@ export function VitalsChart({ history, temperatureUnit = 'C' }: VitalsChartProps
   }, []);
 
   // Format data for chart display based on temperatureUnit
-  const chartData = history.map((pt) => {
+  const chartData = (history || []).map((pt) => {
+    const rawTemp = pt?.temperature ?? 0;
     const tempValue =
       temperatureUnit === 'F'
-        ? Number(((pt.temperature * 9) / 5 + 32).toFixed(1))
-        : Number(pt.temperature.toFixed(1));
+        ? Number(((rawTemp * 9) / 5 + 32).toFixed(1))
+        : Number(rawTemp.toFixed(1));
 
     return {
-      time: pt.time,
-      heartRate: pt.heartRate,
-      spo2: pt.spo2,
+      time: pt?.time || '',
+      heartRate: pt?.heartRate ?? 0,
+      spo2: pt?.spo2 ?? 0,
       temperature: tempValue,
-      systolic: pt.systolic,
-      diastolic: pt.diastolic,
+      systolic: pt?.systolic ?? 0,
+      diastolic: pt?.diastolic ?? 0,
     };
   });
 

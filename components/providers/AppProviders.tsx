@@ -3,11 +3,14 @@
 import React from 'react';
 import { TelehealthProvider } from '../../context/TelehealthContext';
 import { PageTransition } from './PageTransition';
+import { ErrorBoundary } from '../ui/ErrorBoundary';
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
-    <TelehealthProvider>
-      <PageTransition>{children}</PageTransition>
-    </TelehealthProvider>
+    <ErrorBoundary sectionName="CuraLink Application">
+      <TelehealthProvider>
+        <PageTransition>{children}</PageTransition>
+      </TelehealthProvider>
+    </ErrorBoundary>
   );
 }

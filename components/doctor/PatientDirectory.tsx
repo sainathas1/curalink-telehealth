@@ -422,7 +422,7 @@ export function PatientDirectory({
                   </td>
                 </tr>
               ) : (
-                filtered.map((pt) => {
+                (filtered || []).map((pt) => {
                   const hasAllergies =
                     pt.knownAllergies &&
                     pt.knownAllergies.toLowerCase() !== 'none' &&
@@ -441,7 +441,7 @@ export function PatientDirectory({
                             {pt.name && pt.name.trim() !== ''
                               ? pt.name
                                   .split(' ')
-                                  .map((n) => n[0])
+                                  .map((n) => (n || '')[0] || '')
                                   .join('')
                                   .slice(0, 2)
                                   .toUpperCase()
@@ -847,7 +847,7 @@ export function PatientDirectory({
                   <div className="flex items-center gap-2">
                     <FileText className="w-4 h-4 text-teal-600" />
                     <span className="font-bold text-slate-900 text-xs">
-                      Uploaded Diagnostic Records ({patientRecords.length})
+                      Uploaded Diagnostic Records ({(patientRecords || []).length})
                     </span>
                   </div>
                   <span className="text-[10px] font-mono text-teal-700 bg-white px-2 py-0.5 rounded-full border border-teal-200">
@@ -855,13 +855,13 @@ export function PatientDirectory({
                   </span>
                 </div>
 
-                {patientRecords.length === 0 ? (
+                {(patientRecords || []).length === 0 ? (
                   <p className="text-xs text-slate-500 bg-white p-3 rounded-xl border border-teal-100 text-center">
                     No clinical documents or diagnostics uploaded by this patient yet.
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {patientRecords.map((rec) => {
+                    {(patientRecords || []).map((rec) => {
                       const isImg =
                         rec.fileData?.startsWith('data:image/') ||
                         rec.type === 'Imaging' ||

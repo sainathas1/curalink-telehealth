@@ -46,13 +46,13 @@ export function AppointmentsList({
     return s === 'scheduled' || s === 'upcoming' || s === 'in progress' || (s !== 'completed' && s !== 'cancelled');
   };
 
-  const filteredAppointments = appointments.filter((apt) => {
+  const filteredAppointments = (appointments || []).filter((apt) => {
     if (filter === 'Upcoming') return isScheduledAppointment(apt);
     if (filter === 'Completed') return apt.status === 'Completed' || (apt.status as string)?.toLowerCase() === 'completed';
     return true;
   });
 
-  const nextAppointment = appointments.find(isScheduledAppointment);
+  const nextAppointment = (appointments || []).find(isScheduledAppointment);
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto pb-6">
@@ -141,23 +141,23 @@ export function AppointmentsList({
       )}
 
       {/* Appointment History List Container */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs space-y-4">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm space-y-4">
         {/* Header & Filter Chips */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div>
             <h3 className="text-sm font-bold text-slate-900">All Scheduled Consultations</h3>
-            <p className="text-[11px] text-slate-400">{filteredAppointments.length} record(s)</p>
+            <p className="text-[11px] text-slate-400">{(filteredAppointments || []).length} record(s)</p>
           </div>
 
           {/* Material 3 Filter Chips */}
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-full self-start sm:self-auto">
+          <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-full self-start sm:self-auto border border-slate-200/50">
             {(['All', 'Upcoming', 'Completed'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setFilter(tab)}
-                className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-all m3-pressable cursor-pointer ${
+                className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer ${
                   filter === tab
-                    ? 'bg-white text-slate-900 shadow-xs font-bold'
+                    ? 'bg-white text-slate-900 shadow-sm font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -169,8 +169,8 @@ export function AppointmentsList({
 
         {/* Clean Mobile Cards with Rounded Corners */}
         <div className="space-y-3">
-          {filteredAppointments.length === 0 ? (
-            <div className="py-12 px-6 rounded-3xl bg-slate-50 border border-dashed border-slate-200 flex flex-col items-center justify-center text-center">
+          {(filteredAppointments || []).length === 0 ? (
+            <div className="py-12 px-6 rounded-3xl bg-slate-50/60 border border-dashed border-slate-200 flex flex-col items-center justify-center text-center">
               <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
                 <Calendar className="w-6 h-6" />
               </div>
@@ -184,21 +184,21 @@ export function AppointmentsList({
                 onClick={() => setIsBookModalOpen(true)}
                 disabled={!isAuthValid}
                 title={!isAuthValid ? 'Sign in to schedule an appointment' : ''}
-                className="px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-xs shadow-xs transition-all m3-pressable flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-500 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-xs shadow-md shadow-teal-700/20 transition-all duration-300 flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Book First Consultation</span>
               </button>
             </div>
           ) : (
-            filteredAppointments.map((apt) => (
+            (filteredAppointments || []).map((apt) => (
               <div
                 key={apt.id}
-                className="p-4 sm:p-5 rounded-3xl bg-white border border-slate-200/80 hover:border-slate-300 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between gap-3.5"
+                className="p-4 sm:p-5 rounded-3xl bg-white/90 backdrop-blur-sm border border-slate-200/80 hover:border-teal-300 shadow-sm hover:shadow-lg hover:scale-[1.01] transition-all duration-300 flex flex-col justify-between gap-3.5"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
+                    <div className="w-11 h-11 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 shadow-xs">
                       {apt.type === 'Video Call' ? (
                         <Video className="w-5 h-5" />
                       ) : (

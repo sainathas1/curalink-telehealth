@@ -1,7 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { UserProfile, UserRole, LiveTelemetryPayload } from '../../lib/types';
+import { ActiveTab } from './Sidebar';
+import { MobileDrawer } from './MobileDrawer';
 import {
   HeartPulse,
   Stethoscope,
@@ -12,6 +14,7 @@ import {
   Bell,
   Cpu,
   ShieldCheck,
+  Menu,
 } from 'lucide-react';
 
 interface TopHeaderProps {
@@ -25,6 +28,9 @@ interface TopHeaderProps {
   onToggleSimulatorDrawer: () => void;
   onOpenHardwareGuide: () => void;
   activeCriticalAlertsCount?: number;
+  activeTab?: ActiveTab;
+  onSelectTab?: (tab: ActiveTab) => void;
+  onEmergencySOS?: () => void;
 }
 
 export function TopHeader({
@@ -38,14 +44,26 @@ export function TopHeader({
   onToggleSimulatorDrawer,
   onOpenHardwareGuide,
   activeCriticalAlertsCount = 0,
+  activeTab,
+  onSelectTab,
+  onEmergencySOS,
 }: TopHeaderProps) {
   const isDoctor = role?.toLowerCase() === 'doctor';
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 py-3 transition-all">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-        {/* Brand / Logo */}
-        <div className="flex items-center gap-3">
+    <>
+      <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 px-4 sm:px-6 py-3 transition-all fluent-shadow">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+          {/* Brand / Logo + Hamburger on Mobile */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsMobileDrawerOpen(true)}
+              aria-label="Open Navigation Menu"
+              className="md:hidden p-2 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-all hover:scale-105 active:scale-95 duration-200 cursor-pointer"
+            >
+              <Menu className="w-5 h-5 text-teal-600" />
+            </button>
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-600 via-teal-700 to-emerald-800 flex items-center justify-center text-white shadow-md shadow-teal-700/20">
             <HeartPulse className="w-5 h-5 animate-pulse" />
           </div>
@@ -171,5 +189,24 @@ export function TopHeader({
         </div>
       </div>
     </header>
+
+    {/* Slide-out Mobile Navigation Drawer */}
+    <MobileDrawer
+      isOpen={isMobileDrawerOpen}
+      onClose={() => setIsMobileDrawerOpen(false)}
+      role={role}
+      activeTab={activeTab || (isDoctor ? 'clinical-queue' : 'overview')}
+      onSelectTab={(tab) => {
+        if (onSelectTab) onSelectTab(tab);
+        setIsMobileDrawerOpen(false);
+      }}
+      currentUser={currentUser}
+      onToggleRole={onToggleRole}
+      onLogout={onLogout}
+      onOpenAuth={onOpenAuth}
+      onEmergencySOS={onEmergencySOS}
+      activeAlertCount={activeCriticalAlertsCount}
+    />
+  </>
   );
 }

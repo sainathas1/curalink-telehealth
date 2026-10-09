@@ -99,9 +99,9 @@ export function PatientDashboard({
             recs.push({ id: docSnap.id, ...docSnap.data() } as ClinicalRecord);
           });
           setLiveClinicalRecords((prev) => {
-            const existingIds = new Set(prev.map((r) => r.id));
+            const existingIds = new Set((prev || []).map((r) => r.id));
             const newRecs = recs.filter((r) => !existingIds.has(r.id));
-            return [...prev, ...newRecs];
+            return [...(prev || []), ...newRecs];
           });
         },
         (err) => console.warn('Patient dashboard clinical_records onSnapshot notice:', err)
@@ -117,7 +117,7 @@ export function PatientDashboard({
   }, [user?.uid]);
 
   // Derived Prescriptions from live clinical_records (fallback to props if none loaded yet)
-  const clinicalPrescriptions: Prescription[] = liveClinicalRecords
+  const clinicalPrescriptions: Prescription[] = (liveClinicalRecords || [])
     .filter((r) => r.type === 'Prescription')
     .map((r) => {
       const c = r.content || {};
@@ -140,11 +140,11 @@ export function PatientDashboard({
       };
     });
 
-  const effectivePrescriptions = clinicalPrescriptions.length > 0 ? clinicalPrescriptions : prescriptions;
-  const activePrescriptions = effectivePrescriptions.filter((p) => p.status === 'Active');
+  const effectivePrescriptions = clinicalPrescriptions.length > 0 ? clinicalPrescriptions : (prescriptions || []);
+  const activePrescriptions = (effectivePrescriptions || []).filter((p) => p.status === 'Active');
 
   // Derived Medical & Clinical Records from live clinical_records (fallback to props if none loaded yet)
-  const clinicalMedicalRecords: MedicalRecord[] = liveClinicalRecords
+  const clinicalMedicalRecords: MedicalRecord[] = (liveClinicalRecords || [])
     .filter((r) => r.type !== 'Prescription')
     .map((r) => {
       const c = r.content || {};
@@ -162,7 +162,7 @@ export function PatientDashboard({
       };
     });
 
-  const effectiveRecords = clinicalMedicalRecords.length > 0 ? clinicalMedicalRecords : records;
+  const effectiveRecords = clinicalMedicalRecords.length > 0 ? clinicalMedicalRecords : (records || []);
 
   const [hardwareTemp, setHardwareTemp] = useState<number | null>(null);
   const [hardwareTime, setHardwareTime] = useState<string | null>(null);
@@ -317,17 +317,17 @@ export function PatientDashboard({
             <div className="mt-4 space-y-3">
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-black text-slate-900 font-mono">
-                  {activePrescriptions.length}
+                  {(activePrescriptions || []).length}
                 </span>
                 <span className="text-xs text-slate-500 font-medium">Medications Active</span>
               </div>
 
-              {activePrescriptions.length > 0 ? (
+              {(activePrescriptions || []).length > 0 ? (
                 <div className="space-y-1.5">
-                  {activePrescriptions.slice(0, 2).map((rx) => (
+                  {(activePrescriptions || []).slice(0, 2).map((rx) => (
                     <div
                       key={rx.id}
-                      className="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs"
+                      className="p-2 rounded-xl bg-slate-50/80 border border-slate-100 flex items-center justify-between text-xs hover:border-teal-200 transition-all duration-300"
                     >
                       <span className="font-bold text-slate-800 truncate">{rx.medicationName}</span>
                       <span className="text-[11px] text-teal-700 font-semibold">{rx.dosage}</span>
@@ -517,18 +517,18 @@ export function PatientDashboard({
             </button>
           </div>
 
-          {effectiveRecords.length > 0 ? (
+          {(effectiveRecords || []).length > 0 ? (
             <div className="mt-3 space-y-2">
-              {effectiveRecords.slice(0, 3).map((rec) => (
+              {(effectiveRecords || []).slice(0, 3).map((rec) => (
                 <div
                   key={rec.id}
-                  className="p-3 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors flex items-center justify-between text-xs"
+                  className="p-3 rounded-2xl border border-slate-100 hover:border-teal-200 hover:bg-teal-50/20 transition-all duration-300 flex items-center justify-between text-xs"
                 >
                   <div>
                     <h5 className="font-bold text-slate-800">{rec.title}</h5>
                     <p className="text-[11px] text-slate-400">{rec.facility} • {rec.date}</p>
                   </div>
-                  <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">
+                  <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-100">
                     {rec.type}
                   </span>
                 </div>

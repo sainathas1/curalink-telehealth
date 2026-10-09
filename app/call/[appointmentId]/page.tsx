@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { JitsiMeeting } from '@jitsi/react-sdk';
+import dynamic from 'next/dynamic';
 import {
   Video,
   PhoneOff,
@@ -17,22 +17,28 @@ import {
 } from 'lucide-react';
 import { useTelehealth } from '../../../context/TelehealthContext';
 
+const JitsiMeeting = dynamic(
+  () => import('@jitsi/react-sdk').then((mod) => mod.JitsiMeeting),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-white gap-3 rounded-2xl">
+        <div className="w-10 h-10 border-3 border-teal-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-semibold text-slate-300">Connecting Encrypted Video Consultation...</p>
+        <span className="text-xs text-slate-500">Securing WebRTC media streams</span>
+      </div>
+    ),
+  }
+);
+
 interface CallPageProps {
-  params: Promise<{ appointmentId: string }>;
+  params?: any;
 }
 
 export default function TelehealthCallPage({ params }: CallPageProps) {
   const router = useRouter();
   const routeParams = useParams();
-  let appointmentId = (routeParams?.appointmentId as string) || '';
-  if (!appointmentId && params && typeof (params as any)?.then === 'function') {
-    try {
-      const resolved = React.use(params);
-      appointmentId = resolved?.appointmentId || '';
-    } catch {}
-  } else if (!appointmentId && (params as any)?.appointmentId) {
-    appointmentId = (params as any).appointmentId;
-  }
+  const appointmentId = (routeParams?.appointmentId as string) || '';
 
   const { currentUser } = useTelehealth();
   const [isLoading, setIsLoading] = useState(true);

@@ -399,7 +399,7 @@ export function VitalsMonitor({
           </button>
         </div>
 
-        {vitalLogs.length === 0 ? (
+        {(vitalLogs || []).length === 0 ? (
           <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
             <Heart className="w-6 h-6 text-slate-300 mx-auto mb-2" />
             <p className="text-xs font-semibold text-slate-600">No manual entries recorded yet</p>
@@ -421,7 +421,7 @@ export function VitalsMonitor({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {vitalLogs.map((log) => (
+                {(vitalLogs || []).map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-4 py-3 font-mono text-slate-500 text-[11px]">
                       {log.createdAt?.toDate ? log.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }) : 'Recently'}

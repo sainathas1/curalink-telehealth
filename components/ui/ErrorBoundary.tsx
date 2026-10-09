@@ -5,6 +5,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
+  sectionName?: string;
   fallbackTitle?: string;
   fallbackMessage?: string;
 }

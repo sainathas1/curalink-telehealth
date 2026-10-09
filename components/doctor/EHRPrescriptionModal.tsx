@@ -62,14 +62,14 @@ export function EHRPrescriptionModal({
 
   if (!isOpen) return null;
 
-  const matchedPt = patientDirectory.find(
-    (p) => (defaultPatientId && p.id === defaultPatientId) || (patientName && p.name.toLowerCase() === patientName.toLowerCase())
+  const matchedPt = (patientDirectory || []).find(
+    (p) => (defaultPatientId && p?.id === defaultPatientId) || (patientName && p?.name?.toLowerCase() === patientName.toLowerCase())
   );
   const targetPatientId = defaultPatientId || matchedPt?.id || 'patient_user';
   const targetDoctorId = doctorId || 'attending_physician';
   const bloodGroup = matchedPt?.bloodGroup;
   const allergies = matchedPt?.knownAllergies;
-  const chronic = matchedPt?.chronicConditions || [];
+  const chronic = Array.isArray(matchedPt?.chronicConditions) ? matchedPt.chronicConditions : [];
   const currentMeds = matchedPt?.currentMedications;
   const hasAllergies = allergies && allergies.toLowerCase() !== 'none' && allergies.toLowerCase() !== 'none reported';
 
@@ -230,10 +230,10 @@ export function EHRPrescriptionModal({
                   </div>
                 </div>
 
-                {chronic.filter(c => c !== 'None').length > 0 && (
+                {(chronic || []).filter(c => c !== 'None').length > 0 && (
                   <div className="flex flex-wrap items-center gap-1 pt-1">
                     <span className="text-[10px] font-bold text-slate-500">Chronic Conditions:</span>
-                    {chronic.filter(c => c !== 'None').map(c => (
+                    {(chronic || []).filter(c => c !== 'None').map(c => (
                       <span key={c} className="px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] text-slate-700 font-medium">
                         {c}
                       </span>

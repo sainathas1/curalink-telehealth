@@ -26,7 +26,7 @@ export function PrescriptionsList({
   const [selectedRx, setSelectedRx] = useState<Prescription | null>(null);
   const [filter, setFilter] = useState<'All' | 'Active' | 'Completed'>('Active');
 
-  const filteredRx = prescriptions.filter((rx) => {
+  const filteredRx = (prescriptions || []).filter((rx) => {
     if (filter === 'Active') return rx.status === 'Active';
     if (filter === 'Completed') return rx.status === 'Completed' || rx.status === 'Expired';
     return true;
@@ -56,14 +56,14 @@ export function PrescriptionsList({
         </div>
 
         {/* Material 3 Filter Chips */}
-        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-full self-start sm:self-auto">
+        <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-full self-start sm:self-auto border border-slate-200/50">
           {(['Active', 'All', 'Completed'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setFilter(tab)}
-              className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-all m3-pressable cursor-pointer ${
+              className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer ${
                 filter === tab
-                  ? 'bg-white text-slate-900 shadow-xs font-bold'
+                  ? 'bg-white text-slate-900 shadow-sm font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -74,8 +74,8 @@ export function PrescriptionsList({
       </div>
 
       {/* Grid of Clean Mobile Cards with Rounded Corners */}
-      {filteredRx.length === 0 ? (
-        <div className="py-12 px-6 rounded-3xl bg-white border border-slate-200/80 flex flex-col items-center justify-center text-center shadow-xs">
+      {(filteredRx || []).length === 0 ? (
+        <div className="py-12 px-6 rounded-3xl bg-white/80 backdrop-blur-md border border-slate-200/80 flex flex-col items-center justify-center text-center shadow-sm">
           <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
             <Pill className="w-6 h-6" />
           </div>
@@ -88,10 +88,10 @@ export function PrescriptionsList({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredRx.map((rx) => (
+          {(filteredRx || []).map((rx) => (
             <div
               key={rx.id}
-              className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between gap-3.5"
+              className="bg-white/90 backdrop-blur-sm rounded-3xl border border-slate-200/80 hover:border-teal-300 p-5 shadow-sm hover:shadow-lg hover:scale-[1.01] transition-all duration-300 flex flex-col justify-between gap-3.5"
             >
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2">

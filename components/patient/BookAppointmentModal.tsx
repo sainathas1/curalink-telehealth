@@ -781,7 +781,7 @@ export function BookAppointmentModal({
                 1. Filter by Medical Specialty
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {specialties.map((spec) => (
+                {(specialties || []).map((spec) => (
                   <button
                     key={spec}
                     type="button"
@@ -830,7 +830,7 @@ export function BookAppointmentModal({
                   <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
                   <span className="text-xs font-semibold text-slate-600">Querying verified clinicians...</span>
                 </div>
-              ) : filteredDoctors.length === 0 ? (
+              ) : (filteredDoctors || []).length === 0 ? (
                 <div className="p-6 sm:p-8 rounded-2xl bg-slate-50 border border-slate-200/90 text-center flex flex-col items-center justify-center gap-2.5">
                   <div className="w-11 h-11 rounded-2xl bg-teal-50 border border-teal-200/70 flex items-center justify-center text-teal-700">
                     <UserX className="w-5 h-5 text-slate-500" />
@@ -840,12 +840,12 @@ export function BookAppointmentModal({
                       No available clinicians at this time
                     </h5>
                     <p className="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
-                      {doctors.length === 0
+                      {(doctors || []).length === 0
                         ? 'There are currently no verified clinicians active in the portal. Please check back later once clinician credentials are verified by administration.'
                         : `No verified clinicians match "${searchQuery || specialtyFilter}". Try clearing your filters.`}
                     </p>
                   </div>
-                  {(specialtyFilter !== 'All' || searchQuery.trim() !== '') && doctors.length > 0 && (
+                  {(specialtyFilter !== 'All' || searchQuery.trim() !== '') && (doctors || []).length > 0 && (
                     <button
                       type="button"
                       onClick={() => {
@@ -860,7 +860,7 @@ export function BookAppointmentModal({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-1">
-                  {filteredDoctors.map((doc) => {
+                  {(filteredDoctors || []).map((doc) => {
                     const isSelected = selectedDoctorId === doc.id;
                     return (
                       <div
@@ -924,7 +924,7 @@ export function BookAppointmentModal({
                   onChange={(e) => setDate(e.target.value)}
                   className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-teal-500 cursor-pointer"
                 >
-                  {availableDates.map((dateOption) => (
+                  {(availableDates || []).map((dateOption) => (
                     <option key={dateOption} value={dateOption}>
                       {dateOption}
                     </option>

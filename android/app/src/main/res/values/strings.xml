@@ -4,4 +4,5 @@
     <string name="title_activity_main">CuraLink</string>
     <string name="package_name">com.curalink.app</string>
     <string name="custom_url_scheme">com.curalink.app</string>
+    <string name="server_client_id">173041146452-qdgf347ljf2vkvksqq7erb7dui3gs3oi.apps.googleusercontent.com</string>
 </resources>

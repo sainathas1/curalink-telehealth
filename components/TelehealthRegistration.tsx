@@ -11,6 +11,7 @@ import {
   signInWithPopup,
   type User as FirebaseUser,
 } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
 import {
   doc,
   setDoc,
@@ -278,6 +279,14 @@ export default function TelehealthRegistration() {
     setIsLoading(true);
 
     try {
+      if (Capacitor.isNativePlatform()) {
+        const msg = 'Native mobile Google Sign-In requires the @codetrix-studio/capacitor-google-auth plugin. Please use email and password to sign in on mobile devices.';
+        alert(msg);
+        setErrorMessage(msg);
+        setIsLoading(false);
+        return;
+      }
+
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const user = result.user;

@@ -55,7 +55,6 @@ textarea,
 code,
 pre,
 p,
-span,
 h1,
 h2,
 h3,
@@ -67,6 +66,22 @@ td,
 th {
   user-select: text;
   -webkit-user-select: text;
+}
+
+/* Ensure UI components avoid text-selection highlighting on mobile */
+button,
+nav,
+[role="button"],
+[role="tab"],
+[role="navigation"],
+.care-button,
+.care-pill,
+.m3-pressable,
+button *,
+nav * {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* Safe Area Utility Classes */

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, User } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Stethoscope, UserRound } from 'lucide-react';
 import { auth, db, googleProvider } from '../../lib/firebase';
@@ -82,8 +83,15 @@ export function AuthForm({ initialRole = 'Patient', onSuccess }: AuthFormProps) 
     if (busy) return;
     setBusy(true); setError(null);
     try {
-      const credential = await signInWithPopup(auth, googleProvider);
-      onSuccess(await loadOrCreateProfile(credential.user, true));
+      if (Capacitor.isNativePlatform()) {
+        const msg = 'Native mobile Google Sign-In requires the @codetrix-studio/capacitor-google-auth plugin. Please use email and password to sign in on mobile devices.';
+        alert(msg);
+        setError(msg);
+        return;
+      } else {
+        const credential = await signInWithPopup(auth, googleProvider);
+        onSuccess(await loadOrCreateProfile(credential.user, true));
+      }
     } catch (failure) { setError(errorMessage(failure)); }
     finally { setBusy(false); }
   }

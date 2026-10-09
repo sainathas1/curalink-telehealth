@@ -1,28 +1,9 @@
 'use client';
 
-import React from 'react';
-import { UserProfile, UserRole } from '../../lib/types';
-import { ActiveTab, PatientTab, DoctorTab } from './Sidebar';
-import {
-  LayoutDashboard,
-  Activity,
-  Calendar,
-  Pill,
-  FileText,
-  Users,
-  Video,
-  Cpu,
-  Stethoscope,
-  Link as LinkIcon,
-  User,
-  X,
-  LogOut,
-  Shield,
-  HeartPulse,
-  AlertTriangle,
-  ChevronRight,
-  ExternalLink,
-} from 'lucide-react';
+import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { AlertTriangle, HeartPulse, LogOut, User, X } from 'lucide-react';
+import type { UserProfile, UserRole } from '../../lib/types';
+import { getNavigation, type ActiveTab } from './navigation';
 
 interface MobileDrawerProps {
   isOpen: boolean;
@@ -31,190 +12,78 @@ interface MobileDrawerProps {
   activeTab: ActiveTab;
   onSelectTab: (tab: ActiveTab) => void;
   currentUser: UserProfile | null;
-  onToggleRole: () => void;
   onLogout: () => void;
   onOpenAuth: () => void;
   onEmergencySOS?: () => void;
   activeAlertCount?: number;
 }
 
-export function MobileDrawer({
-  isOpen,
-  onClose,
-  role,
-  activeTab,
-  onSelectTab,
-  currentUser,
-  onToggleRole,
-  onLogout,
-  onOpenAuth,
-  onEmergencySOS,
-  activeAlertCount = 0,
-}: MobileDrawerProps) {
+export function MobileDrawer({ isOpen, onClose, role, activeTab, onSelectTab, currentUser, onLogout, onOpenAuth, onEmergencySOS, activeAlertCount = 0 }: MobileDrawerProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const closeActionRef = useRef(onClose);
+  const isPatient = role.toLowerCase() === 'patient';
+
+  useEffect(() => { closeActionRef.current = onClose; }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeRef.current?.focus();
+    const desktopViewport = window.matchMedia('(min-width: 768px)');
+    const closeOnDesktop = () => { if (desktopViewport.matches) closeActionRef.current(); };
+    desktopViewport.addEventListener('change', closeOnDesktop);
+    return () => {
+      desktopViewport.removeEventListener('change', closeOnDesktop);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [isOpen]);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const controls = panelRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex="0"]');
+    if (!controls?.length) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   if (!isOpen) return null;
 
-  const isPatient = role?.toLowerCase() === 'patient';
-
-  const patientNavItems: { id: PatientTab; label: string; icon: React.ReactNode; badge?: string }[] = [
-    { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-5 h-5" /> },
-    { id: 'vitals', label: 'IoT Vitals Monitor', icon: <Activity className="w-5 h-5" /> },
-    { id: 'device', label: 'Connected Devices', icon: <LinkIcon className="w-5 h-5" />, badge: 'USB' },
-    { id: 'appointments', label: 'Appointments', icon: <Calendar className="w-5 h-5" /> },
-    { id: 'prescriptions', label: 'Prescriptions', icon: <Pill className="w-5 h-5" /> },
-    { id: 'records', label: 'Medical Records', icon: <FileText className="w-5 h-5" /> },
-    { id: 'profile', label: 'Profile', icon: <User className="w-5 h-5" /> },
-  ];
-
-  const doctorNavItems: { id: DoctorTab; label: string; icon: React.ReactNode; badge?: string }[] = [
-    { id: 'clinical-queue', label: 'Clinical Queue', icon: <Video className="w-5 h-5" />, badge: 'Today' },
-    { id: 'ward-telemetry', label: 'Ward Telemetry', icon: <Activity className="w-5 h-5" />, badge: activeAlertCount > 0 ? `${activeAlertCount} Alert` : undefined },
-    { id: 'patient-directory', label: 'Patient Directory', icon: <Users className="w-5 h-5" /> },
-    { id: 'records', label: 'Medical Records', icon: <FileText className="w-5 h-5" /> },
-    { id: 'ehr-prescribe', label: 'EHR Workspace', icon: <Stethoscope className="w-5 h-5" /> },
-    { id: 'hardware-hub', label: 'IoT Hardware Hub', icon: <Cpu className="w-5 h-5" /> },
-  ];
-
-  const items = isPatient ? patientNavItems : doctorNavItems;
-
   return (
-    <div className="fixed inset-0 z-50 md:hidden flex animate-in fade-in duration-200">
-      {/* Frosted Acrylic Backdrop */}
-      <div
-        className="fixed inset-0 bg-slate-950/70 backdrop-blur-md"
-        onClick={onClose}
-      />
-
-      {/* Slide-in Fluent Drawer Panel */}
-      <div className="relative w-80 max-w-[85vw] h-full bg-slate-900/95 backdrop-blur-2xl text-white border-r border-slate-800 shadow-2xl flex flex-col justify-between p-5 z-10 animate-in slide-in-from-left duration-250">
-        <div className="space-y-6 overflow-y-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-700 flex items-center justify-center text-white shadow-md shadow-teal-500/20">
-                <HeartPulse className="w-5 h-5 animate-pulse" />
-              </div>
-              <div>
-                <span className="text-base font-black tracking-tight text-white">
-                  Cura<span className="text-teal-400">Link</span>
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider block text-teal-400">
-                  {isPatient ? 'Patient Portal' : 'Clinician Command'}
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* User Profile Pill */}
-          {currentUser ? (
-            <div className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-300 border border-teal-400/30 flex items-center justify-center font-bold text-sm shrink-0">
-                {currentUser.fullName ? currentUser.fullName[0].toUpperCase() : 'U'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-white truncate">{currentUser.fullName || 'User'}</p>
-                <p className="text-[11px] text-slate-400 truncate">{currentUser.email || 'Signed in'}</p>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => {
-                onClose();
-                onOpenAuth();
-              }}
-              className="w-full py-2.5 px-4 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all hover:scale-105 active:scale-95 duration-200 cursor-pointer flex items-center justify-center gap-2"
-            >
-              <User className="w-4 h-4" />
-              <span>Sign In / Register</span>
-            </button>
-          )}
-
-          {/* Navigation Links */}
-          <nav className="space-y-1">
-            <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider px-3 mb-2">
-              Menu Navigation
-            </p>
-            {items.map((item) => {
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    onSelectTab(item.id);
-                    onClose();
-                  }}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all duration-200 cursor-pointer ${
-                    isActive
-                      ? 'bg-teal-500/20 text-teal-300 border border-teal-400/30 shadow-xs'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className={isActive ? 'text-teal-400' : 'text-slate-400'}>{item.icon}</span>
-                    <span>{item.label}</span>
-                  </div>
-
-                  {item.badge && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30 font-mono">
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+    <div className="fixed inset-0 z-50 flex md:hidden">
+      <button type="button" tabIndex={-1} aria-label="Close navigation" className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={onClose} />
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="mobile-navigation-title" onKeyDown={handleKeyDown} className="relative flex h-full w-80 max-w-[88vw] flex-col bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5">
+          <div className="flex items-center gap-2.5"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-700 text-white"><HeartPulse size={20} aria-hidden="true" /></span><div><p className="text-lg font-bold tracking-tight text-slate-900">Cura<span className="text-teal-700">Link</span></p><p id="mobile-navigation-title" className="text-[11px] text-slate-500">{isPatient ? 'Patient portal' : 'Doctor portal'}</p></div></div>
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="Close navigation" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-teal-600"><X size={20} aria-hidden="true" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {currentUser ? <div className="mb-6 flex items-center gap-3 rounded-2xl bg-slate-50 p-3.5"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-teal-100 text-sm font-semibold text-teal-800">{(currentUser.fullName || 'U').split(' ').filter(Boolean).slice(0, 2).map((name) => name[0]).join('')}</span><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{currentUser.fullName}</p><p className="mt-0.5 truncate text-xs text-slate-500">{currentUser.email}</p></div></div> : <button type="button" onClick={() => { onClose(); onOpenAuth(); }} className="care-button mb-5 w-full"><User size={16} aria-hidden="true" />Sign in</button>}
+          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{isPatient ? 'Your care' : 'Clinical workspace'}</p>
+          <nav aria-label="All portal pages" className="space-y-1">
+            {getNavigation(role, activeAlertCount).map(({ id, label, icon: Icon, badge }) => (
+              <button type="button" key={id} aria-current={activeTab === id ? 'page' : undefined} onClick={() => { onSelectTab(id); onClose(); }} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm focus-visible:outline-2 focus-visible:outline-teal-600 ${activeTab === id ? 'bg-teal-50 font-semibold text-teal-800' : 'font-medium text-slate-600 hover:bg-slate-50'}`}><Icon size={19} aria-hidden="true" /><span className="flex-1 text-left">{label}</span>{badge && <span aria-label={`${badge} alerts`} className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] text-rose-700">{badge}</span>}</button>
+            ))}
           </nav>
         </div>
-
-        {/* Footer Actions */}
-        <div className="pt-4 border-t border-slate-800 space-y-2.5">
-          {/* Switch Role Button */}
-          <button
-            onClick={() => {
-              onToggleRole();
-              onClose();
-            }}
-            className="w-full py-2.5 px-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700 flex items-center justify-between transition-all duration-200 cursor-pointer"
-          >
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-teal-400" />
-              <span>Switch to {isPatient ? 'Doctor Portal' : 'Patient Portal'}</span>
-            </div>
-            <ChevronRight className="w-4 h-4 text-slate-500" />
-          </button>
-
-          {/* Emergency SOS Button for Patients */}
-          {isPatient && onEmergencySOS && (
-            <button
-              onClick={() => {
-                onClose();
-                onEmergencySOS();
-              }}
-              className="w-full py-2.5 px-3.5 rounded-2xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold text-xs border border-rose-500/30 flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer"
-            >
-              <AlertTriangle className="w-4 h-4 text-rose-400 animate-pulse" />
-              <span>Emergency SOS Protocol</span>
-            </button>
-          )}
-
-          {/* Logout */}
-          {currentUser && (
-            <button
-              onClick={() => {
-                onClose();
-                onLogout();
-              }}
-              className="w-full py-2 px-3.5 rounded-2xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Sign Out</span>
-            </button>
-          )}
+        <div className="space-y-2 border-t border-slate-100 p-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}>
+          {isPatient && onEmergencySOS && <button type="button" onClick={() => { onClose(); onEmergencySOS(); }} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 hover:bg-rose-100 focus-visible:outline-2 focus-visible:outline-rose-600"><AlertTriangle size={17} aria-hidden="true" />Emergency help</button>}
+          {currentUser && <button type="button" onClick={() => { onClose(); onLogout(); }} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-teal-600"><LogOut size={16} aria-hidden="true" />Sign out</button>}
         </div>
       </div>
     </div>

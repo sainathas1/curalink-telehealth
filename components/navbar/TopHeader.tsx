@@ -1,26 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
-import { UserProfile, UserRole, LiveTelemetryPayload } from '../../lib/types';
-import { ActiveTab } from './Sidebar';
+import { useState } from 'react';
+import Link from 'next/link';
+import { Bell, Cpu, HeartPulse, LogOut, Menu, Sliders, Stethoscope, User } from 'lucide-react';
+import type { UserProfile, UserRole, LiveTelemetryPayload } from '../../lib/types';
+import { getNavigation, type ActiveTab } from './navigation';
 import { MobileDrawer } from './MobileDrawer';
-import {
-  HeartPulse,
-  Stethoscope,
-  User,
-  Radio,
-  Sliders,
-  LogOut,
-  Bell,
-  Cpu,
-  ShieldCheck,
-  Menu,
-} from 'lucide-react';
 
 interface TopHeaderProps {
   currentUser: UserProfile | null;
   role: UserRole;
-  onToggleRole: () => void;
   onLogout: () => void;
   onOpenAuth: () => void;
   telemetry: LiveTelemetryPayload;
@@ -33,180 +22,33 @@ interface TopHeaderProps {
   onEmergencySOS?: () => void;
 }
 
-export function TopHeader({
-  currentUser,
-  role,
-  onToggleRole,
-  onLogout,
-  onOpenAuth,
-  telemetry,
-  isSimulating,
-  onToggleSimulatorDrawer,
-  onOpenHardwareGuide,
-  activeCriticalAlertsCount = 0,
-  activeTab,
-  onSelectTab,
-  onEmergencySOS,
-}: TopHeaderProps) {
-  const isDoctor = role?.toLowerCase() === 'doctor';
+export function TopHeader({ currentUser, role, onLogout, onOpenAuth, telemetry, isSimulating, onToggleSimulatorDrawer, onOpenHardwareGuide, activeCriticalAlertsCount = 0, activeTab, onSelectTab, onEmergencySOS }: TopHeaderProps) {
+  const isDoctor = role.toLowerCase() === 'doctor';
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const hasReadings = telemetry.sensorConnected || isSimulating;
+  const title = getNavigation(role).find((item) => item.id === activeTab)?.label;
+  const initials = (currentUser?.fullName || 'U').split(' ').filter(Boolean).slice(0, 2).map((name) => name[0]).join('');
 
   return (
     <>
-      <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 px-4 sm:px-6 py-3 transition-all fluent-shadow">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          {/* Brand / Logo + Hamburger on Mobile */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsMobileDrawerOpen(true)}
-              aria-label="Open Navigation Menu"
-              className="md:hidden p-2 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-all hover:scale-105 active:scale-95 duration-200 cursor-pointer"
-            >
-              <Menu className="w-5 h-5 text-teal-600" />
-            </button>
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-600 via-teal-700 to-emerald-800 flex items-center justify-center text-white shadow-md shadow-teal-700/20">
-            <HeartPulse className="w-5 h-5 animate-pulse" />
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
+        <div className="flex min-h-[77px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <button type="button" onClick={() => setIsMobileDrawerOpen(true)} aria-label="Open navigation" aria-haspopup="dialog" aria-expanded={isMobileDrawerOpen} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-teal-600 md:hidden"><Menu size={21} aria-hidden="true" /></button>
+            <Link href="/" aria-label="CuraLink home" className="flex items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-600"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-700 text-white shadow-sm"><HeartPulse size={22} aria-hidden="true" /></span><span className="hidden text-xl font-bold tracking-tight text-slate-900 sm:block">Cura<span className="text-teal-700">Link</span></span></Link>
+            <span className="mx-2 hidden h-7 w-px bg-slate-200 lg:block" aria-hidden="true" />
+            <div className="min-w-0 lg:ml-0"><p className="truncate text-sm font-semibold text-slate-800">{title || (isDoctor ? 'Doctor portal' : 'Patient portal')}</p><p className="mt-0.5 hidden text-[11px] text-slate-400 lg:block">{isDoctor ? 'Your connected clinical workspace' : 'Your health, all in one place'}</p></div>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-black tracking-tight text-slate-900">
-                Cura<span className="text-teal-600">Link</span>
-              </span>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200/80">
-                Telehealth
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium hidden sm:block">
-              Continuous IoT Monitoring & Virtual Care
-            </p>
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <div className="hidden items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-500 xl:flex"><span className={`h-1.5 w-1.5 rounded-full ${isSimulating ? 'bg-amber-500' : telemetry.sensorConnected ? 'bg-teal-500' : 'bg-slate-300'}`} aria-hidden="true" />{isSimulating ? 'Demo readings' : telemetry.sensorConnected ? 'Device connected' : 'Device offline'}{hasReadings && <span className="border-l border-slate-200 pl-2 text-slate-700">{telemetry.heartRate} bpm</span>}</div>
+            {isDoctor && <div className="hidden items-center gap-1 md:flex"><button type="button" onClick={onToggleSimulatorDrawer} aria-label="Open sensor simulator" title="Sensor simulator" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-teal-700 focus-visible:outline-2 focus-visible:outline-teal-600"><Sliders size={18} aria-hidden="true" /></button><button type="button" onClick={onOpenHardwareGuide} aria-label="Open device setup guide" title="Device setup guide" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-teal-700 focus-visible:outline-2 focus-visible:outline-teal-600"><Cpu size={18} aria-hidden="true" /></button></div>}
+            <span className="hidden items-center gap-1.5 rounded-full bg-slate-50 px-3 py-1.5 text-[11px] font-medium text-slate-500 lg:flex">{isDoctor ? <Stethoscope size={13} aria-hidden="true" /> : <User size={13} aria-hidden="true" />}{isDoctor ? 'Doctor' : 'Patient'}</span>
+            {activeCriticalAlertsCount > 0 && <button type="button" aria-label={`View ${activeCriticalAlertsCount} critical alerts`} onClick={() => onSelectTab?.(isDoctor ? 'ward-telemetry' : 'vitals')} className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600 focus-visible:outline-2 focus-visible:outline-rose-600"><Bell size={18} aria-hidden="true" /><span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] text-white">{activeCriticalAlertsCount}</span></button>}
+            {currentUser ? <div className="flex items-center gap-2 border-l border-slate-200 pl-3 sm:gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50 text-xs font-semibold text-teal-800">{initials}</span><div className="hidden max-w-36 sm:block"><p className="truncate text-xs font-semibold text-slate-800">{currentUser.fullName}</p><p className="mt-0.5 truncate text-[10px] text-slate-400">{isDoctor ? currentUser.specialty || 'Clinician' : 'My account'}</p></div><button type="button" onClick={onLogout} aria-label="Sign out" title="Sign out" className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-2 focus-visible:outline-teal-600"><LogOut size={16} aria-hidden="true" /></button></div> : <button type="button" onClick={onOpenAuth} className="care-button text-xs">Sign in</button>}
           </div>
         </div>
-
-        {/* Center / IoT Hardware Status */}
-        <div className="hidden md:flex items-center gap-2 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/70 text-xs">
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white shadow-xs">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                telemetry.status === 'critical'
-                  ? 'bg-rose-500 animate-ping'
-                  : telemetry.status === 'elevated'
-                  ? 'bg-amber-500'
-                  : 'bg-emerald-500 animate-pulse'
-              }`}
-            />
-            <span className="font-semibold text-slate-700 flex items-center gap-1.5">
-              <Radio className="w-3.5 h-3.5 text-teal-600" />
-              {isDoctor ? (isSimulating ? 'ESP32 Simulator' : 'Physical Sensor') : 'Wearable Sensor'}
-            </span>
-            <span className="text-[11px] text-slate-400 font-mono">
-              ({telemetry.heartRate} BPM | {telemetry.spo2}%)
-            </span>
-          </div>
-
-          {/* Clinician Hardware & Simulator controls: restricted to Doctor */}
-          {isDoctor && (
-            <>
-              <button
-                onClick={onToggleSimulatorDrawer}
-                className="px-2.5 py-1 text-slate-600 hover:text-teal-700 hover:bg-white rounded-xl transition-all font-medium flex items-center gap-1 cursor-pointer"
-                title="Adjust live sensor readings & test tachycardia/fever alarms"
-              >
-                <Sliders className="w-3.5 h-3.5" />
-                <span>Simulate</span>
-              </button>
-
-              <button
-                onClick={onOpenHardwareGuide}
-                className="px-2.5 py-1 text-slate-600 hover:text-teal-700 hover:bg-white rounded-xl transition-all font-medium flex items-center gap-1 cursor-pointer"
-                title="ESP32 C++ Code & Hardware Wiring Guide"
-              >
-                <Cpu className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">ESP32 Code</span>
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Right Actions & Persona Badge */}
-        <div className="flex items-center gap-2.5">
-          {/* Locked Role Badge (Role is strictly tied to account) */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200/80 text-xs font-bold text-slate-700 shadow-2xs">
-            {isDoctor ? (
-              <>
-                <Stethoscope className="w-3.5 h-3.5 text-teal-600" />
-                <span>Doctor Portal</span>
-              </>
-            ) : (
-              <>
-                <User className="w-3.5 h-3.5 text-teal-600" />
-                <span>Patient Portal</span>
-              </>
-            )}
-          </div>
-
-
-          {/* Alarm Notifications indicator */}
-          {activeCriticalAlertsCount > 0 && (
-            <div className="relative">
-              <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center animate-bounce">
-                <Bell className="w-4 h-4" />
-              </div>
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center">
-                {activeCriticalAlertsCount}
-              </span>
-            </div>
-          )}
-
-          {/* User Profile / Auth Button */}
-          {currentUser ? (
-            <div className="flex items-center gap-2 pl-1">
-              <div className="hidden sm:block text-right">
-                <p className="text-xs font-bold text-slate-800 leading-tight">
-                  {currentUser.fullName}
-                </p>
-                <p className="text-[10px] text-teal-600 font-semibold flex items-center justify-end gap-1">
-                  <ShieldCheck className="w-3 h-3" />
-                  {currentUser.role?.toLowerCase() === 'doctor' ? currentUser.specialty || 'Clinician' : 'Verified Patient'}
-                </p>
-              </div>
-
-              <button
-                onClick={onLogout}
-                className="w-9 h-9 rounded-xl border border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer"
-                title="Sign Out"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={onOpenAuth}
-              className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm shadow-teal-600/20 transition-all cursor-pointer"
-            >
-              Sign In
-            </button>
-          )}
-        </div>
-      </div>
-    </header>
-
-    {/* Slide-out Mobile Navigation Drawer */}
-    <MobileDrawer
-      isOpen={isMobileDrawerOpen}
-      onClose={() => setIsMobileDrawerOpen(false)}
-      role={role}
-      activeTab={activeTab || (isDoctor ? 'clinical-queue' : 'overview')}
-      onSelectTab={(tab) => {
-        if (onSelectTab) onSelectTab(tab);
-        setIsMobileDrawerOpen(false);
-      }}
-      currentUser={currentUser}
-      onToggleRole={onToggleRole}
-      onLogout={onLogout}
-      onOpenAuth={onOpenAuth}
-      onEmergencySOS={onEmergencySOS}
-      activeAlertCount={activeCriticalAlertsCount}
-    />
-  </>
+      </header>
+      <MobileDrawer isOpen={isMobileDrawerOpen} onClose={() => setIsMobileDrawerOpen(false)} role={role} activeTab={activeTab || (isDoctor ? 'clinical-queue' : 'overview')} onSelectTab={(tab) => { onSelectTab?.(tab); setIsMobileDrawerOpen(false); }} currentUser={currentUser} onLogout={onLogout} onOpenAuth={onOpenAuth} onEmergencySOS={onEmergencySOS} activeAlertCount={activeCriticalAlertsCount} />
+    </>
   );
 }

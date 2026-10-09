@@ -1,15 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import {
-  AlertTriangle,
-  PhoneCall,
-  X,
-  ShieldAlert,
-  Ambulance,
-  CheckCircle2,
-} from 'lucide-react';
-import { LiveTelemetryPayload } from '../../lib/types';
+import { useEffect, useRef } from 'react';
+import { AlertTriangle, HeartPulse, PhoneCall, UserRound, X } from 'lucide-react';
+import { useTelehealth } from '../../context/TelehealthContext';
+import type { LiveTelemetryPayload } from '../../lib/types';
 
 interface EmergencySOSModalProps {
   isOpen: boolean;
@@ -18,124 +12,88 @@ interface EmergencySOSModalProps {
   patientName?: string;
 }
 
+function contactPhoneNumber(contact: string | undefined): string {
+  const candidate = contact?.match(/\+?\d[\d\s().-]{5,}\d/)?.[0];
+  const normalized = candidate?.replace(/[\s().-]/g, '') || '';
+  return /^\+?\d{7,15}$/.test(normalized) ? normalized : '';
+}
+
+function reading(value: number, unit: string): string {
+  return Number.isFinite(value) && value > 0 ? `${value}${unit}` : 'Unavailable';
+}
+
 export function EmergencySOSModal({
   isOpen,
   onClose,
   telemetry,
   patientName = 'Patient',
 }: EmergencySOSModalProps) {
-  const [countdown, setCountdown] = useState(5);
-  const [isDispatched, setIsDispatched] = useState(false);
+  const { currentUser, isSimulating } = useTelehealth();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const emergencyContact = currentUser?.emergencyContact?.trim();
+  const emergencyPhone = contactPhoneNumber(emergencyContact);
+  const hasDeviceReadings = telemetry.sensorConnected && !isSimulating;
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isOpen && !isDispatched) {
-      setCountdown(5);
-      timer = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            setIsDispatched(true);
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [isOpen, isDispatched]);
-
-  if (!isOpen) return null;
+    const dialog = dialogRef.current;
+    if (isOpen && dialog && !dialog.open) dialog.showModal();
+    if (!isOpen && dialog?.open) dialog.close();
+  }, [isOpen]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-rose-950/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-lg w-full border-4 border-rose-500 shadow-2xl overflow-hidden text-xs">
-        {/* Top Header */}
-        <div className="bg-rose-600 text-white p-6 text-center relative">
-          <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3 animate-ping">
-            <AlertTriangle className="w-8 h-8 text-white" />
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="emergency-help-title"
+      aria-describedby="emergency-help-description"
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      className="m-auto max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-3xl border-0 bg-white p-0 text-slate-900 shadow-xl backdrop:bg-slate-950/50"
+    >
+      <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-6">
+        <div className="flex items-center gap-3">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-700">
+            <AlertTriangle className="h-6 w-6" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 id="emergency-help-title" className="text-xl font-semibold tracking-tight">Get urgent help</h2>
+            <p className="mt-1 text-sm text-slate-500">For {patientName}</p>
           </div>
-          <h3 className="text-xl font-black uppercase tracking-tight">
-            Emergency Medical SOS
-          </h3>
-          <p className="text-xs text-rose-100 mt-1">
-            Immediate Clinical Triage & 911 Ambulance Dispatch Protocol
-          </p>
-
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
-
-        <div className="p-6 space-y-4">
-          {!isDispatched ? (
-            <div className="text-center space-y-3">
-              <p className="text-sm font-bold text-slate-900">
-                Dispatching emergency telemetry in:
-              </p>
-              <div className="text-5xl font-black font-mono text-rose-600 animate-pulse">
-                00:0{countdown}
-              </div>
-              <p className="text-slate-500">
-                Transmitting current physiological vitals to Dr. Vance and nearest emergency room.
-              </p>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all cursor-pointer"
-              >
-                Cancel Dispatch (False Alarm)
-              </button>
-            </div>
-          ) : (
-            <div className="text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-7 h-7" />
-              </div>
-              <div>
-                <h4 className="text-base font-bold text-slate-900">Emergency Protocol Active</h4>
-                <p className="text-slate-500 mt-0.5">
-                  Telemetry transmitted. On-call cardiologist and ambulance dispatch notified.
-                </p>
-              </div>
-
-              {/* Vitals Snapshot */}
-              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 font-mono flex items-center justify-around text-slate-800">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-sans">HR</span>
-                  <span className="font-bold text-rose-600">{telemetry.heartRate} BPM</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-sans">SPO2</span>
-                  <span className="font-bold text-cyan-600">{telemetry.spo2}%</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-sans">TEMP</span>
-                  <span className="font-bold text-amber-600">{telemetry.temperature}°C</span>
-                </div>
-              </div>
-
-              <div className="pt-2 flex flex-col gap-2">
-                <a
-                  href="tel:911"
-                  className="w-full py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-rose-900/40 transition-all"
-                >
-                  <PhoneCall className="w-4 h-4 animate-bounce" />
-                  <span>Call Emergency 911 Now</span>
-                </a>
-                <button
-                  onClick={onClose}
-                  className="w-full py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold"
-                >
-                  Return to Dashboard
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <button type="button" onClick={onClose} aria-label="Close emergency help" className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-rose-700">
+          <X className="h-5 w-5" aria-hidden="true" />
+        </button>
       </div>
-    </div>
+
+      <div className="space-y-5 p-6">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
+          <div className="flex items-start gap-3">
+            <PhoneCall className="mt-1 h-5 w-5 shrink-0 text-rose-700" aria-hidden="true" />
+            <div>
+              <h3 className="text-base font-semibold text-rose-900">Call your local emergency number</h3>
+              <p className="mt-2 text-sm leading-6 text-rose-800">If you need immediate medical help, call emergency services directly or ask someone nearby to call for you.</p>
+            </div>
+          </div>
+        </div>
+        <p id="emergency-help-description" className="text-sm leading-6 text-slate-600">CuraLink has not dispatched an ambulance, contacted emergency services, or notified your clinician. Use your phone to request help directly.</p>
+
+        <section aria-label="Saved emergency contact" className="rounded-2xl border border-slate-200 p-5">
+          <div className="flex items-center gap-2 text-sm font-semibold"><UserRound className="h-4 w-4 text-teal-700" aria-hidden="true" />Your emergency contact</div>
+          {emergencyContact ? <>
+            <p className="mt-2 break-words text-sm leading-6 text-slate-600">{emergencyContact}</p>
+            {emergencyPhone ? <a href={`tel:${emergencyPhone}`} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"><PhoneCall className="h-4 w-4" aria-hidden="true" />Call your emergency contact</a> : <p className="mt-3 text-xs leading-5 text-slate-500">A callable phone number is not saved. Contact this person using your phone.</p>}
+          </> : <p className="mt-2 text-sm leading-6 text-slate-500">No emergency contact is saved in your profile. Ask someone nearby to help you call.</p>}
+        </section>
+
+        <section aria-label="Device readings" className="rounded-2xl bg-slate-50 p-5">
+          <h3 className="flex items-center gap-2 text-sm font-semibold"><HeartPulse className="h-4 w-4 text-slate-500" aria-hidden="true" />Latest device readings</h3>
+          {hasDeviceReadings ? <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
+            <div><dt className="text-xs text-slate-500">Heart rate</dt><dd className="mt-1 font-semibold tabular-nums">{reading(telemetry.heartRate, ' bpm')}</dd></div>
+            <div><dt className="text-xs text-slate-500">Oxygen</dt><dd className="mt-1 font-semibold tabular-nums">{reading(telemetry.spo2, '%')}</dd></div>
+            <div><dt className="text-xs text-slate-500">Temperature</dt><dd className="mt-1 font-semibold tabular-nums">{reading(telemetry.temperature, '°C')}</dd></div>
+          </dl> : <p className="mt-2 text-sm leading-6 text-slate-500">No live device readings are available.</p>}
+          <p className="mt-3 text-xs leading-5 text-slate-500">Readings are not sent to emergency services from this dialog.</p>
+        </section>
+        <button type="button" onClick={onClose} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">Back to dashboard</button>
+      </div>
+    </dialog>
   );
 }

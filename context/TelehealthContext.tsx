@@ -1,37 +1,19 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { collection, doc, onSnapshot, query, where, serverTimestamp, runTransaction, writeBatch, type Transaction } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useTelemetry } from '../hooks/useTelemetry';
-import { db } from '../lib/firebase';
-import {
-  collection,
-  doc,
-  setDoc,
-  addDoc,
-  updateDoc,
-  getDocs,
-  query,
-  where,
-  onSnapshot,
-  serverTimestamp,
-} from 'firebase/firestore';
-import {
-  UserProfile,
-  UserRole,
-  LiveTelemetryPayload,
-  VitalHistoryPoint,
-  Appointment,
-  Prescription,
-  MedicalRecord,
-  ClinicalRecord,
-  PatientDirectoryItem,
-  VitalRecord,
-  ConsultationMessage,
-} from '../lib/types';
-import { SimulationMode } from '../lib/iot-service';
-
+import type { UserProfile, UserRole, LiveTelemetryPayload, VitalHistoryPoint, Appointment, Prescription, MedicalRecord, ClinicalRecord, PatientDirectoryItem, VitalRecord, ConsultationMessage } from '../lib/types';
+import type { SimulationMode } from '../lib/iot-service';
+import { mergeClinicalRecords, recordSources, sortAppointments, timeValue, toMedicalRecord, toPatient, toPrescription, type StoredRecord } from '../lib/telehealth-data';
 interface TelehealthContextType {
+  authError: string | null;
+  retryAuth: () => void;
+  dataLoading: boolean;
+  dataError: string | null;
+  retryData: () => void;
   // Auth & Profile
   currentUser: UserProfile | null;
   role: UserRole;
@@ -100,603 +82,330 @@ interface TelehealthContextType {
   openAuthModal: () => void;
   closeAuthModal: () => void;
 }
-
+interface DataState {
+  scope: string; loading: boolean; error: string | null;
+  patientAppointments: Appointment[]; doctorAppointmentsQueue: Appointment[];
+  prescriptions: Prescription[]; medicalRecords: MedicalRecord[]; clinicalRecords: ClinicalRecord[];
+  patientDirectory: PatientDirectoryItem[]; vitalLogs: VitalRecord[]; consultationMessages: ConsultationMessage[];
+}
+const emptyData = (scope = ''): DataState => ({ scope, loading: false, error: null, patientAppointments: [], doctorAppointmentsQueue: [], prescriptions: [], medicalRecords: [], clinicalRecords: [], patientDirectory: [], vitalLogs: [], consultationMessages: [] });
+const chunks = (values: string[]) => Array.from({ length: Math.ceil(values.length / 30) }, (_, index) => values.slice(index * 30, index * 30 + 30));
+const defined = (value: Record<string, any>) => Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+const safeId = (id: string) => /^[a-zA-Z0-9_-]{1,128}$/.test(id);
 const TelehealthContext = createContext<TelehealthContextType | null>(null);
 
 export function TelehealthProvider({ children }: { children: ReactNode }) {
   const authState = useAuth();
-  const telemetryState = useTelemetry(authState.currentUser?.uid || '');
+  const account = authState.currentUser;
+  const identity = `${account?.uid || ''}:${account?.role?.toLowerCase() || ''}:${account?.isVerified === true}`;
+  // Remount the entire workspace synchronously when identity or access changes.
+  // This also resets the existing telemetry hook without changing hardware logic.
+  return <ScopedTelehealthProvider key={identity} authState={authState}>{children}</ScopedTelehealthProvider>;
+}
+function ScopedTelehealthProvider({ children, authState }: { children: ReactNode; authState: ReturnType<typeof useAuth> }) {
+  const currentUser = authState.currentUser;
+  const uid = currentUser?.uid || '';
+  const profileRole = currentUser?.role?.toLowerCase() || '';
+  const verified = currentUser?.isVerified === true;
+  const name = currentUser?.fullName || '';
+  const isDoctor = profileRole === 'doctor';
+  const permitted = Boolean(uid && (profileRole === 'patient' || (isDoctor && verified)));
+  const telemetryState = useTelemetry(permitted ? uid : '');
+  const [revision, setRevision] = useState(0);
+  const scopeKey = `${uid}:${profileRole}:${verified}:${revision}`;
+  const [data, setData] = useState<DataState>(() => emptyData());
+  const [actionError, setActionError] = useState<{ scope: string; message: string } | null>(null);
+  const view = permitted && data.scope === scopeKey ? data : emptyData(scopeKey);
 
-  // Collections initialized to clean empty states
-  const [patientAppointments, setPatientAppointments] = useState<Appointment[]>([]);
-  const [doctorAppointmentsQueue, setDoctorAppointmentsQueue] = useState<Appointment[]>([]);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
-  const [clinicalRecords, setClinicalRecords] = useState<ClinicalRecord[]>([]);
-  const [patientDirectory, setPatientDirectory] = useState<PatientDirectoryItem[]>([]);
-  const [vitalLogs, setVitalLogs] = useState<VitalRecord[]>([]);
-  const [consultationMessages, setConsultationMessages] = useState<ConsultationMessage[]>([]);
-
-  // Modals
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
   const [activeCallAppointment, setActiveCallAppointment] = useState<Appointment | null>(null);
-
   const [isEHRModalOpen, setIsEHRModalOpen] = useState(false);
   const [targetEhrPatientName, setTargetEhrPatientName] = useState('');
   const [targetEhrPatientId, setTargetEhrPatientId] = useState('');
-
   const [isSimulatorDrawerOpen, setIsSimulatorDrawerOpen] = useState(false);
   const [isESP32GuideOpen, setIsESP32GuideOpen] = useState(false);
   const [isEmergencySOSOpen, setIsEmergencySOSOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  // Real-time Firestore Appointments Listener (Always Active for Doctor & Patient Realtime Sync)
   useEffect(() => {
-    let unsubApts: (() => void) | undefined;
-    try {
-      const aptsCol = collection(db, 'appointments');
-      unsubApts = onSnapshot(
-        aptsCol,
-        (snapshot) => {
-          const apts: Appointment[] = [];
-          snapshot.forEach((d) => {
-            const data = d.data();
-            apts.push({ ...data, id: d.id } as Appointment);
-          });
+    if (!permitted) return;
+    let active = true;
+    const local = emptyData(scopeKey);
+    const pending = new Set<string>();
+    const errors = new Map<string, string>();
+    const stops = new Map<string, () => void>();
+    const recordMaps = new Map<string, StoredRecord[]>();
+    const vitalMaps = new Map<string, VitalRecord[]>();
+    const messageMaps = new Map<string, ConsultationMessage[]>();
+    const assigned = new Map<string, Record<string, any>>();
+    const patients = new Map<string, Record<string, any>>();
+    const telemetry = new Map<string, Record<string, any>>();
+    let relatedIds = new Set<string>();
+    let recordsKey = '', messagesKey = '';
 
-          // Sort by newest first
-          apts.sort((a, b) => (b.id || '').localeCompare(a.id || ''));
-
-          // Live UI Refresh: Instantly update doctor queue
-          setDoctorAppointmentsQueue(apts);
-
-          // Live UI Refresh: Update patient appointments
-          const currentUid = authState.currentUser?.uid;
-          const currentName = authState.currentUser?.fullName;
-          if (currentUid) {
-            const userApts = apts.filter(
-              (a) =>
-                a.patientId === currentUid ||
-                a.patientId === 'patient_user' ||
-                (currentName && a.patientName?.toLowerCase() === currentName.toLowerCase())
-            );
-            setPatientAppointments(userApts.length > 0 ? userApts : apts);
-          } else {
-            setPatientAppointments(apts);
-          }
-        },
-        (err) => console.warn('Appointments real-time onSnapshot listener notice:', err.message)
-      );
-    } catch (err) {
-      console.warn('Error attaching appointments listener:', err);
-    }
-
-    return () => {
-      if (unsubApts) {
-        try {
-          unsubApts();
-        } catch {}
+    const publish = () => {
+      if (!active) return;
+      local.clinicalRecords = mergeClinicalRecords(Array.from(recordMaps.values()).flat());
+      local.prescriptions = local.clinicalRecords.filter(record => record.type === 'Prescription').map(toPrescription);
+      local.medicalRecords = local.clinicalRecords.filter(record => record.type !== 'Prescription').map(toMedicalRecord);
+      local.patientDirectory = Array.from(patients.entries()).filter(([id]) => relatedIds.has(id)).map(([id, profile]) => toPatient(id, profile, name, telemetry.get(id))).sort((a, b) => a.name.localeCompare(b.name));
+      local.vitalLogs = Array.from(vitalMaps.values()).flat().sort((a, b) => timeValue(b.createdAt) - timeValue(a.createdAt));
+      local.consultationMessages = Array.from(messageMaps.values()).flat().sort((a, b) => timeValue(a.createdAt) - timeValue(b.createdAt));
+      setData({ ...local, loading: pending.size > 0, error: errors.size ? 'Some care information could not be loaded. Check your connection and try again.' : null });
+    };
+    const stopPrefix = (prefix: string) => {
+      for (const [key, stop] of stops) if (key.startsWith(prefix)) { stop(); stops.delete(key); pending.delete(key); errors.delete(key); }
+    };
+    const listen = (key: string, target: any, receive: (snapshot: any) => void, clear: () => void) => {
+      let listening = true;
+      pending.add(key);
+      try {
+        const unsubscribe = onSnapshot(target, snapshot => {
+          if (!active || !listening) return;
+          errors.delete(key); pending.delete(key); receive(snapshot); publish();
+        }, () => {
+          if (!active || !listening) return;
+          errors.set(key, 'Unavailable'); pending.delete(key); clear(); publish();
+        });
+        stops.set(key, () => { listening = false; unsubscribe(); });
+      } catch {
+        listening = false; pending.delete(key); errors.set(key, 'Unavailable'); clear();
+        queueMicrotask(publish);
       }
     };
-  }, [authState.currentUser?.uid, authState.currentUser?.fullName]);
-
-  // Real-time Firestore Listeners for medical_records, vitals, prescriptions, and directory
-  useEffect(() => {
-    if (!authState.currentUser) {
-      setPrescriptions([]);
-      setMedicalRecords([]);
-      setClinicalRecords([]);
-      setPatientDirectory([]);
-      setVitalLogs([]);
-      setConsultationMessages([]);
-      return;
-    }
-
-    const currentUid = authState.currentUser.uid;
-    const isDoctor = authState.currentUser.role?.toLowerCase() === 'doctor';
-    const unsubscribers: (() => void)[] = [];
-
-    try {
-      // 1. medical_records Listener (Strict real-time sync with onSnapshot)
-      const medRecordsQuery = isDoctor
-        ? query(collection(db, 'medical_records'))
-        : query(collection(db, 'medical_records'), where('patientId', '==', currentUid));
-
-      const unsubMedRecords = onSnapshot(
-        medRecordsQuery,
-        (snapshot) => {
-          const recs: ClinicalRecord[] = [];
-          const rxs: Prescription[] = [];
-          const medRecs: MedicalRecord[] = [];
-
-          snapshot.forEach((d) => {
-            const data = d.data();
-            const recordItem: ClinicalRecord = {
-              id: d.id,
-              patientId: data.patientId,
-              doctorId: data.doctorId,
-              doctorName: data.doctorName,
-              patientName: data.patientName,
-              type: data.type,
-              content: data.content,
-              createdAt: data.createdAt,
-            };
-            recs.push(recordItem);
-
-            const c = data.content || {};
-            if (data.type === 'Prescription') {
-              rxs.push({
-                id: d.id,
-                patientId: data.patientId,
-                patientName: data.patientName || 'Patient',
-                doctorId: data.doctorId,
-                doctorName: data.doctorName || 'Attending Physician',
-                doctorLicense: c.doctorLicense || 'MED-LICENSED',
-                medicationName: c.medicationName || 'Prescription',
-                dosage: c.dosage || 'Standard Dosage',
-                frequency: c.frequency || 'Daily',
-                duration: c.duration || '30 Days',
-                instructions: c.instructions || 'Follow physician directions.',
-                dateIssued: c.dateIssued || (data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently'),
-                validUntil: c.validUntil || 'Active',
-                refillsLeft: c.refillsLeft ?? 1,
-                status: c.status || 'Active',
-              });
-            } else {
-              medRecs.push({
-                id: d.id,
-                patientId: data.patientId,
-                date: c.date || (data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently'),
-                type: (data.type as any) || 'Clinical Summary',
-                title: data.title || c.title || (data.type === 'Clinical Note' ? `Clinical Note - ${c.diagnosis || 'Observation'}` : 'Medical Record'),
-                doctorName: data.doctorName || 'Attending Physician',
-                facility: data.facility || c.facility || 'CuraLink Telehealth Network',
-                fileSize: data.fileSize || c.fileSize || 'HIPAA Certified',
-                summary: data.notes || data.summary || c.summary || c.notes || c.diagnosis || 'Clinical evaluation record.',
-                notes: data.notes || data['Notes'] || c.notes,
-                downloadUrl: data.downloadUrl || c.downloadUrl || data.fileData || c.fileData,
-                fileData: data.fileData || c.fileData || data.downloadUrl || c.downloadUrl,
-              });
-            }
-          });
-
-          setClinicalRecords(recs);
-          setPrescriptions(rxs);
-          setMedicalRecords(medRecs);
-        },
-        (err) => console.warn('medical_records listener notice:', err.message)
-      );
-      unsubscribers.push(unsubMedRecords);
-
-      // 2. clinical_records Listener (Legacy fallback merged seamlessly)
-      const clinicalQuery = isDoctor
-        ? query(collection(db, 'clinical_records'))
-        : query(collection(db, 'clinical_records'), where('patientId', '==', currentUid));
-
-      const unsubClinical = onSnapshot(
-        clinicalQuery,
-        (snapshot) => {
-          snapshot.forEach((d) => {
-            const data = d.data();
-            const c = data.content || {};
-            if (data.type === 'Prescription') {
-              const rxItem: Prescription = {
-                id: d.id,
-                patientId: data.patientId,
-                patientName: data.patientName || 'Patient',
-                doctorId: data.doctorId,
-                doctorName: data.doctorName || 'Attending Physician',
-                doctorLicense: c.doctorLicense || 'MED-LICENSED',
-                medicationName: c.medicationName || 'Prescription',
-                dosage: c.dosage || 'Standard Dosage',
-                frequency: c.frequency || 'Daily',
-                duration: c.duration || '30 Days',
-                instructions: c.instructions || 'Follow physician directions.',
-                dateIssued: c.dateIssued || 'Recently',
-                validUntil: c.validUntil || 'Active',
-                refillsLeft: c.refillsLeft ?? 1,
-                status: c.status || 'Active',
-              };
-              setPrescriptions((prev) => {
-                if (prev.some((p) => p.id === d.id)) return prev;
-                return [rxItem, ...prev];
-              });
-            } else {
-              const medItem: MedicalRecord = {
-                id: d.id,
-                patientId: data.patientId,
-                date: c.date || (data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently'),
-                type: (data.recordType as any) || (data['Record Type'] as any) || (data.type as any) || 'Clinical Summary',
-                title: data.documentTitle || data['Document Title'] || data.title || c.title || (data.type === 'Clinical Note' ? `Clinical Note - ${c.diagnosis || 'Observation'}` : 'Medical Record'),
-                doctorName: data.doctorName || 'Attending Physician',
-                facility: data.facility || data['Facility'] || c.facility || 'CuraLink Telehealth Network',
-                fileSize: data.fileSize || c.fileSize || 'HIPAA Certified',
-                summary: data.clinicalSummary || data['Clinical Summary'] || data.notes || data['Notes'] || c.summary || c.notes || c.diagnosis || 'Clinical evaluation record.',
-                notes: data.notes || data['Notes'] || data.clinicalSummary,
-                downloadUrl: data.downloadUrl || c.downloadUrl || data.fileData || c.fileData,
-                fileData: data.fileData || c.fileData || data.downloadUrl || c.downloadUrl,
-              };
-              setMedicalRecords((prev) => {
-                if (prev.some((m) => m.id === d.id)) return prev;
-                return [medItem, ...prev];
-              });
-            }
-          });
-        },
-        (err) => console.warn('clinical_records listener notice:', err.message)
-      );
-      unsubscribers.push(unsubClinical);
-
-      // 3. vitals Collection Listener
-      const vitalsQuery = query(
-        collection(db, 'vitals'),
-        where('patientId', '==', currentUid)
-      );
-      const unsubVitals = onSnapshot(
-        vitalsQuery,
-        (snapshot) => {
-          const logs: VitalRecord[] = [];
-          snapshot.forEach((d) => {
-            logs.push({ ...d.data(), id: d.id } as VitalRecord);
-          });
-          logs.sort((a, b) => (b.id || '').localeCompare(a.id || ''));
-          setVitalLogs(logs);
-        },
-        (err) => console.warn('vitals listener notice:', err.message)
-      );
-      unsubscribers.push(unsubVitals);
-
-      // 4. Consultation Messages Listener
-      const messagesQuery = isDoctor
-        ? query(collection(db, 'consultation_messages'))
-        : query(collection(db, 'consultation_messages'), where('senderId', '==', currentUid));
-      const unsubMessages = onSnapshot(
-        messagesQuery,
-        (snapshot) => {
-          const msgs: ConsultationMessage[] = [];
-          snapshot.forEach((d) => {
-            msgs.push({ ...d.data(), id: d.id } as ConsultationMessage);
-          });
-          setConsultationMessages(msgs);
-        },
-        (err) => console.warn('consultation_messages listener notice:', err.message)
-      );
-      unsubscribers.push(unsubMessages);
-
-      // 5. Patient Directory (for Doctors)
-      if (isDoctor) {
-        const patientsQuery = query(collection(db, 'users'), where('role', 'in', ['patient', 'Patient']));
-        const unsubPatients = onSnapshot(patientsQuery, (snapshot) => {
-          const dir: PatientDirectoryItem[] = [];
-          snapshot.forEach((d) => {
-            const data = d.data();
-            dir.push({
-              id: d.id,
-              name: data.fullName || data.name || 'Patient',
-              email: data.email || '',
-              phone: data.phoneNumber || data.phone || '',
-              phoneNumber: data.phoneNumber || data.phone || '',
-              age: data.age || 35,
-              gender: data.gender || 'Other',
-              condition: data.condition || 'General Observation',
-              status: 'Stable',
-              roomOrBed: data.roomOrBed || 'Remote Home-Care',
-              assignedDoctor: authState.currentUser?.fullName || 'Assigned Clinician',
-              lastVisit: data.lastVisit || data.lastVisitDate || 'Initial Intake',
-              lastVisitDate: data.lastVisitDate || data.lastVisit || '',
-              nextAppointment: data.nextAppointment,
-              currentVitals: {
-                heartRate: 0,
-                spo2: 0,
-                temperature: 0,
-                bloodPressure: '--/--',
-              },
-              bloodGroup: data.bloodGroup || data.bloodType || 'Not specified',
-              bloodType: data.bloodType || data.bloodGroup || 'Not specified',
-              allergies: data.allergies || (data.knownAllergies ? [data.knownAllergies] : []),
-              knownAllergies: data.knownAllergies || (data.allergies ? data.allergies.join(', ') : 'None Reported'),
-              chronicConditions: data.chronicConditions || [],
-              currentMedications: data.currentMedications || 'None Reported',
-              hasCompletedOnboarding: data.hasCompletedOnboarding === true,
-              lastSyncedTemperature: data.lastSyncedTemperature !== undefined ? data.lastSyncedTemperature : undefined,
-              lastSyncedAt: data.lastSyncedAt || undefined,
-              temperatureStatus: data.temperatureStatus || undefined,
-              deviceModel: data.deviceModel || undefined,
-            });
-          });
-          setPatientDirectory(dir);
-        }, (err) => console.warn('Patient directory listener notice:', err.message));
-        unsubscribers.push(unsubPatients);
+    const scopedQuery = (source: string, field: string, ids: string[]) => query(collection(db, source), where(field, ids.length === 1 ? '==' : 'in', ids.length === 1 ? ids[0] : ids));
+    const replaceRecordScope = (ids: string[]) => {
+      const key = [...ids].sort().join(',');
+      if (key === recordsKey) return;
+      recordsKey = key; stopPrefix('records/'); stopPrefix('vitals/'); recordMaps.clear(); vitalMaps.clear();
+      for (const [index, batch] of chunks(ids).entries()) {
+        for (const source of recordSources) {
+          const sourceKey = `records/${source}/${index}`;
+          listen(sourceKey, scopedQuery(source, 'patientId', batch), snapshot => recordMaps.set(sourceKey, snapshot.docs.map((item: any) => ({ id: item.id, source, data: item.data() }))), () => recordMaps.delete(sourceKey));
+        }
+        const vitalKey = `vitals/${index}`;
+        listen(vitalKey, scopedQuery('vitals', 'patientId', batch), snapshot => vitalMaps.set(vitalKey, snapshot.docs.map((item: any) => ({ ...item.data(), id: item.id }))), () => vitalMaps.delete(vitalKey));
       }
-    } catch (err) {
-      console.warn('Firestore subscription setup error:', err);
-    }
-
-    return () => {
-      unsubscribers.forEach((fn) => {
-        try {
-          fn();
-        } catch {}
-      });
     };
-  }, [authState.currentUser]);
+    const replaceMessageScope = (appointments: Appointment[]) => {
+      const ids = appointments.map(appointment => appointment.id).sort();
+      const key = ids.join(','); if (key === messagesKey) return;
+      messagesKey = key; stopPrefix('messages/'); messageMaps.clear();
+      for (const [index, batch] of chunks(ids).entries()) {
+        const messageKey = `messages/${index}`;
+        listen(messageKey, scopedQuery('consultation_messages', 'appointmentId', batch), snapshot => messageMaps.set(messageKey, snapshot.docs.map((item: any) => ({ ...item.data(), id: item.id }))), () => messageMaps.delete(messageKey));
+      }
+    };
+    const refreshPatientRecordScope = () => replaceRecordScope(Array.from(patients.keys()).filter(id => relatedIds.has(id)));
+    const refreshRelations = () => {
+      const bookedIds = local.doctorAppointmentsQueue.filter(appointment => appointment.status.toLowerCase() !== 'cancelled').map(appointment => appointment.patientId).filter(safeId);
+      relatedIds = new Set([...assigned.keys(), ...bookedIds]);
+      for (const id of patients.keys()) if (!relatedIds.has(id)) { patients.delete(id); telemetry.delete(id); }
+      for (const key of [...stops.keys()]) {
+        if ((key.startsWith('patient/') || key.startsWith('telemetry/')) && !relatedIds.has(key.split('/')[1])) {
+          stops.get(key)?.(); stops.delete(key); pending.delete(key); errors.delete(key);
+        }
+      }
+      refreshPatientRecordScope();
+      for (const id of relatedIds) {
+        if (!stops.has(`patient/${id}`)) listen(`patient/${id}`, doc(db, 'users', id), snapshot => {
+          const profile = snapshot.data();
+          if (profile && String(profile.role).toLowerCase() === 'patient') patients.set(id, profile);
+          else patients.delete(id);
+          refreshPatientRecordScope();
+        }, () => { patients.delete(id); refreshPatientRecordScope(); });
+        if (!stops.has(`telemetry/${id}`)) listen(`telemetry/${id}`, doc(db, 'telemetry', id), snapshot => {
+          const reading = snapshot.data(); if (reading) telemetry.set(id, reading); else telemetry.delete(id);
+        }, () => telemetry.delete(id));
+      }
+    };
+    listen('appointments', query(collection(db, 'appointments'), where(isDoctor ? 'doctorId' : 'patientId', '==', uid)), snapshot => {
+      const appointments = sortAppointments(snapshot.docs.map((item: any) => ({ ...item.data(), id: item.id })));
+      if (isDoctor) { local.doctorAppointmentsQueue = appointments; refreshRelations(); }
+      else local.patientAppointments = appointments;
+      replaceMessageScope(appointments);
+    }, () => {
+      local.patientAppointments = []; local.doctorAppointmentsQueue = [];
+      if (isDoctor) refreshRelations(); replaceMessageScope([]);
+    });
+    if (isDoctor) listen('assigned', query(collection(db, 'users'), where('assignedDoctorId', '==', uid)), snapshot => {
+      assigned.clear();
+      for (const item of snapshot.docs) if (String(item.data().role).toLowerCase() === 'patient') assigned.set(item.id, item.data());
+      refreshRelations();
+    }, () => { assigned.clear(); refreshRelations(); });
+    else replaceRecordScope([uid]);
+    return () => { active = false; for (const stop of stops.values()) stop(); };
+  }, [uid, profileRole, verified, isDoctor, permitted, scopeKey, name]);
 
-  // CRUD: Appointments (addDoc / setDoc)
-  const addAppointment = async (apt: Appointment) => {
-    setPatientAppointments((prev) => [apt, ...prev]);
-    setDoctorAppointmentsQueue((prev) => [apt, ...prev]);
-    try {
-      await setDoc(doc(db, 'appointments', apt.id), apt);
-    } catch (err) {
-      console.warn('Notice: Firestore save appointment offline fallback:', err);
-    }
+  const requireAccount = () => {
+    if (!currentUser || auth.currentUser?.uid !== currentUser.uid) throw new Error('Sign in again before making changes.');
+    return currentUser;
   };
-
-  // CRUD: Update Appointment Status (updateDoc)
+  const requirePatient = () => {
+    const account = requireAccount(); if (account.role.toLowerCase() !== 'patient') throw new Error('A patient account is required.'); return account;
+  };
+  const validateDoctorRelation = async (transaction: Transaction, patientId: string) => {
+    const account = requireAccount();
+    if (account.role.toLowerCase() !== 'doctor' || account.isVerified !== true || !safeId(patientId)) throw new Error('A verified clinician account is required.');
+    const physician = await transaction.get(doc(db, 'users', account.uid));
+    if (!physician.exists() || String(physician.data().role).toLowerCase() !== 'doctor' || physician.data().isVerified !== true) throw new Error('Your clinician access is no longer verified.');
+    const patient = await transaction.get(doc(db, 'users', patientId));
+    if (!patient.exists() || String(patient.data().role).toLowerCase() !== 'patient') throw new Error('Choose a registered patient.');
+    if (patient.data().assignedDoctorId !== account.uid) {
+      const related = view.doctorAppointmentsQueue.find(appointment => appointment.patientId === patientId && appointment.status.toLowerCase() !== 'cancelled');
+      if (!related) throw new Error('Choose a patient assigned to you or booked with you.');
+      const booking = await transaction.get(doc(db, 'appointments', related.id));
+      if (!booking.exists() || booking.data().doctorId !== account.uid || booking.data().patientId !== patientId || String(booking.data().status).toLowerCase() === 'cancelled') throw new Error('Your care relationship could not be confirmed.');
+    }
+    return account;
+  };
+  const addAppointment = async (appointment: Appointment) => {
+    const account = requirePatient();
+    if (appointment.patientId !== account.uid || !safeId(appointment.id) || !safeId(appointment.doctorId)) throw new Error('Your appointment details could not be confirmed.');
+    await runTransaction(db, async transaction => {
+      requirePatient();
+      const clinician = await transaction.get(doc(db, 'users', appointment.doctorId));
+      const reference = doc(db, 'appointments', appointment.id);
+      const existing = await transaction.get(reference);
+      if (!clinician.exists() || String(clinician.data().role).toLowerCase() !== 'doctor' || clinician.data().isVerified !== true) throw new Error('This clinician is no longer available for booking. Please choose another clinician.');
+      if (existing.exists()) {
+        if (existing.data().patientId !== account.uid || existing.data().doctorId !== appointment.doctorId) throw new Error('This appointment identifier is already in use.');
+        return;
+      }
+      requirePatient();
+      transaction.set(reference, defined({ ...appointment, patientId: account.uid, patientName: account.fullName, patientEmail: account.email,
+        doctorName: clinician.data().fullName || clinician.data().name || 'Clinician', doctorSpecialty: clinician.data().specialty || '',
+        status: 'scheduled', paymentStatus: 'Pending', meetingLink: `/call/${appointment.id}`, createdAt: serverTimestamp() }));
+    });
+  };
   const updateAppointmentStatus = async (id: string, status: string) => {
-    setPatientAppointments((prev) =>
-      prev.map((apt) => (apt.id === id ? { ...apt, status } : apt))
-    );
-    setDoctorAppointmentsQueue((prev) =>
-      prev.map((apt) => (apt.id === id ? { ...apt, status } : apt))
-    );
-    try {
-      await updateDoc(doc(db, 'appointments', id), {
-        status,
-        updatedAt: serverTimestamp(),
-      });
-    } catch (err) {
-      console.warn('Notice: updateAppointmentStatus error:', err);
-    }
+    const account = requireAccount(); const normalized = status.toLowerCase();
+    if (!safeId(id) || !['in progress', 'completed', 'cancelled'].includes(normalized)) throw new Error('Choose a valid appointment action.');
+    await runTransaction(db, async transaction => {
+      const reference = doc(db, 'appointments', id); const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error('This appointment is no longer available.');
+      const appointment = snapshot.data();
+      if (account.role.toLowerCase() === 'patient') {
+        if (appointment.patientId !== account.uid || normalized !== 'cancelled') throw new Error('You can only cancel your own appointments.');
+      } else {
+        if (appointment.doctorId !== account.uid) throw new Error('This appointment is not assigned to you.');
+        await validateDoctorRelation(transaction, appointment.patientId);
+      }
+      if (['completed', 'cancelled'].includes(String(appointment.status).toLowerCase())) {
+        if (String(appointment.status).toLowerCase() === normalized) return;
+        throw new Error('This appointment has already ended.');
+      }
+      requireAccount();
+      transaction.update(reference, { status, updatedAt: serverTimestamp() });
+    });
   };
-
-  // CRUD: Prescriptions (Strictly routed to medical_records collection)
-  const addPrescription = async (rx: Prescription) => {
-    setPrescriptions((prev) => [rx, ...prev]);
-    try {
-      await addDoc(collection(db, 'medical_records'), {
-        patientId: rx.patientId,
-        doctorId: rx.doctorId || authState.currentUser?.uid || 'attending_physician',
-        doctorName: rx.doctorName || authState.currentUser?.fullName || 'Attending Physician',
-        patientName: rx.patientName,
-        type: 'Prescription',
-        content: {
-          medicationName: rx.medicationName,
-          dosage: rx.dosage,
-          frequency: rx.frequency,
-          duration: rx.duration,
-          instructions: rx.instructions,
-          dateIssued: rx.dateIssued,
-          validUntil: rx.validUntil,
-          refillsLeft: rx.refillsLeft,
-          status: rx.status || 'Active',
-          doctorLicense: rx.doctorLicense || 'MED-LICENSED',
-        },
-        createdAt: serverTimestamp(),
-      });
-      await setDoc(doc(db, 'prescriptions', rx.id), rx);
-    } catch (err) {
-      console.warn('Notice: Firestore save prescription notice:', err);
-    }
+  const addPrescription = async (prescription: Prescription) => {
+    if (!safeId(prescription.id) || !prescription.medicationName.trim() || !prescription.dosage.trim()) throw new Error('Choose a patient and complete the prescription.');
+    await runTransaction(db, async transaction => {
+      const account = await validateDoctorRelation(transaction, prescription.patientId);
+      const reference = doc(db, 'medical_records', prescription.id); const existing = await transaction.get(reference);
+      if (existing.exists()) {
+        const stored = existing.data();
+        const sameContent = ['medicationName', 'dosage', 'frequency', 'duration', 'instructions'].every(field => stored.content?.[field] === prescription[field as keyof Prescription]);
+        if (stored.patientId === prescription.patientId && stored.doctorId === account.uid && stored.type === 'Prescription' && sameContent) return;
+        throw new Error('This prescription identifier is already in use.');
+      }
+      requireAccount();
+      transaction.set(reference, { patientId: prescription.patientId, patientName: prescription.patientName, doctorId: account.uid,
+        doctorName: account.fullName, type: 'Prescription', content: defined({ medicationName: prescription.medicationName, dosage: prescription.dosage,
+          frequency: prescription.frequency, duration: prescription.duration, instructions: prescription.instructions,
+          dateIssued: prescription.dateIssued, validUntil: prescription.validUntil, refillsLeft: prescription.refillsLeft,
+          status: prescription.status || 'Active', doctorLicense: account.licenseNumber || '' }), createdAt: serverTimestamp() });
+    });
   };
-
-  // CRUD: Medical Records & Diagnostics (Strictly routed to medical_records collection)
-  const addMedicalRecord = async (rec: MedicalRecord) => {
-    setMedicalRecords((prev) => [rec, ...prev]);
-    try {
-      await addDoc(collection(db, 'medical_records'), {
-        patientId: rec.patientId,
-        doctorId: authState.currentUser?.role?.toLowerCase() === 'doctor' ? authState.currentUser.uid : 'clinician',
-        doctorName: rec.doctorName || authState.currentUser?.fullName || 'Attending Physician',
-        patientName: authState.currentUser?.fullName || 'Patient',
-        type: rec.type || 'Medical Record',
-        content: {
-          title: rec.title,
-          facility: rec.facility,
-          summary: rec.summary,
-          fileSize: rec.fileSize,
-          date: rec.date,
-          downloadUrl: rec.downloadUrl || '',
-        },
-        createdAt: serverTimestamp(),
-      });
-      await setDoc(doc(db, 'medicalRecords', rec.id), rec);
-    } catch (err) {
-      console.warn('Notice: Firestore save medical record notice:', err);
-    }
+  const addMedicalRecord = async (record: MedicalRecord) => {
+    const account = requireAccount();
+    if (account.role.toLowerCase() === 'patient' && record.patientId !== account.uid) throw new Error('You can only add your own health records.');
+    // The protected uploader already writes both collections before this callback.
+    if (record.fileData?.startsWith('data:') || record.downloadUrl?.startsWith('data:')) return;
+    if (!safeId(record.id)) throw new Error('The record identifier is invalid.');
+    await runTransaction(db, async transaction => {
+      if (account.role.toLowerCase() === 'doctor') await validateDoctorRelation(transaction, record.patientId);
+      const reference = doc(db, 'medical_records', record.id);
+      const existing = await transaction.get(reference);
+      if (existing.exists()) {
+        if (existing.data().patientId === record.patientId && (existing.data().title || existing.data().content?.title) === record.title) return;
+        throw new Error('This record identifier is already in use.');
+      }
+      requireAccount();
+      transaction.set(reference, defined({ patientId: record.patientId, doctorId: isDoctor ? account.uid : null,
+        doctorName: isDoctor ? account.fullName : record.doctorName, type: record.type, title: record.title,
+        content: defined({ title: record.title, facility: record.facility, summary: record.summary, fileSize: record.fileSize, date: record.date, downloadUrl: record.downloadUrl }), createdAt: serverTimestamp() }));
+    });
   };
-
-  // CRUD: Update Medical Record Status (updateDoc)
   const updateMedicalRecordStatus = async (id: string, status: string) => {
-    try {
-      await updateDoc(doc(db, 'medical_records', id), {
-        'content.status': status,
-        status,
-        updatedAt: serverTimestamp(),
-      });
-    } catch (err) {
-      console.warn('Notice: updateMedicalRecordStatus error:', err);
-    }
+    const record = view.clinicalRecords.find(item => item.id === id);
+    if (!record) throw new Error('This clinical record is no longer available.');
+    const [source, storageId] = id.split('/');
+    if (!recordSources.includes(source as typeof recordSources[number]) || !safeId(storageId)) throw new Error('Invalid record identifier.');
+    await runTransaction(db, async transaction => {
+      await validateDoctorRelation(transaction, record.patientId);
+      const reference = doc(db, source, storageId); const existing = await transaction.get(reference);
+      if (!existing.exists() || existing.data().patientId !== record.patientId) throw new Error('The record could not be confirmed.');
+      requireAccount();
+      transaction.update(reference, { status, 'content.status': status, updatedAt: serverTimestamp() });
+    });
   };
-
-  // CRUD: Clinical Doctor Notes (Strictly routed to medical_records collection)
-  const addClinicalNote = async (patientId: string, title: string, notes: string, patientName?: string) => {
-    try {
-      await addDoc(collection(db, 'medical_records'), {
-        patientId,
-        doctorId: authState.currentUser?.uid || 'attending_physician',
-        doctorName: authState.currentUser?.fullName || 'Attending Physician',
-        patientName: patientName || 'Patient',
-        type: 'Clinical Note',
-        content: {
-          title,
-          notes,
-          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          status: 'Finalized',
-        },
-        createdAt: serverTimestamp(),
-      });
-    } catch (err) {
-      console.warn('Notice: Firestore save clinical note error:', err);
-    }
+  const addClinicalNote = async (patientId: string, title: string, notes: string, patientName = '') => {
+    if (!title.trim() || !notes.trim()) throw new Error('Enter a title and clinical note.');
+    const reference = doc(collection(db, 'medical_records'));
+    await runTransaction(db, async transaction => {
+      const account = await validateDoctorRelation(transaction, patientId);
+      requireAccount();
+      transaction.set(reference, { patientId, patientName, doctorId: account.uid, doctorName: account.fullName, type: 'Clinical Note',
+        content: { title: title.trim(), notes: notes.trim(), status: 'Finalized', date: new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date()) }, createdAt: serverTimestamp() });
+    });
   };
-
-  // CRUD: Vitals Logging (Strictly routed to vitals collection and telemetry doc)
-  const logVitalSign = async (vitals: {
-    heartRate: number;
-    spo2: number;
-    temperature: number;
-    systolic?: number;
-    diastolic?: number;
-    notes?: string;
-  }) => {
-    const currentUid = authState.currentUser?.uid;
-    if (!currentUid) throw new Error('Authentication required to record vitals');
-
-    try {
-      await addDoc(collection(db, 'vitals'), {
-        patientId: currentUid,
-        patientName: authState.currentUser?.fullName || 'Patient',
-        heartRate: vitals.heartRate,
-        spo2: vitals.spo2,
-        temperature: vitals.temperature,
-        systolic: vitals.systolic || 120,
-        diastolic: vitals.diastolic || 80,
-        notes: vitals.notes || '',
-        createdAt: serverTimestamp(),
-      });
-
-      await setDoc(
-        doc(db, 'telemetry', currentUid),
-        {
-          patientId: currentUid,
-          deviceId: 'MANUAL-VITALS-FEED',
-          heartRate: vitals.heartRate,
-          spo2: vitals.spo2,
-          temperature: vitals.temperature,
-          systolic: vitals.systolic || 120,
-          diastolic: vitals.diastolic || 80,
-          timestamp: serverTimestamp(),
-          sensorConnected: true,
-        },
-        { merge: true }
-      );
-    } catch (err) {
-      console.warn('Notice: logVitalSign error:', err);
-      throw err;
-    }
+  const logVitalSign = async (vitals: { heartRate: number; spo2: number; temperature: number; systolic?: number; diastolic?: number; notes?: string }) => {
+    const account = requirePatient();
+    if (![vitals.heartRate, vitals.spo2, vitals.temperature].every(value => Number.isFinite(value) && value > 0)) throw new Error('Enter valid measurements before saving.');
+    const readings = defined(vitals); const batch = writeBatch(db);
+    batch.set(doc(collection(db, 'vitals')), { ...readings, patientId: account.uid, patientName: account.fullName, createdAt: serverTimestamp() });
+    batch.set(doc(db, 'telemetry', account.uid), { ...readings, patientId: account.uid, deviceId: 'MANUAL-VITALS-FEED', timestamp: Date.now(), sensorConnected: false }, { merge: true });
+    await batch.commit();
   };
-
-  // CRUD: Consultation Messages (addDoc to consultation_messages)
   const sendConsultationMessage = async (appointmentId: string, text: string) => {
-    const currentUid = authState.currentUser?.uid;
-    if (!currentUid) throw new Error('Authentication required to send consultation message');
-
-    try {
-      await addDoc(collection(db, 'consultation_messages'), {
-        appointmentId,
-        senderId: currentUid,
-        senderName: authState.currentUser?.fullName || 'User',
-        senderRole: authState.currentUser?.role || 'Patient',
-        text: text.trim(),
-        createdAt: serverTimestamp(),
-      });
-    } catch (err) {
-      console.warn('Notice: sendConsultationMessage error:', err);
-      throw err;
-    }
+    const account = requireAccount(); if (!safeId(appointmentId) || !text.trim()) throw new Error('Enter a message for a booked consultation.');
+    await runTransaction(db, async transaction => {
+      const appointment = await transaction.get(doc(db, 'appointments', appointmentId));
+      if (!appointment.exists() || (isDoctor ? appointment.data().doctorId !== account.uid : appointment.data().patientId !== account.uid)) throw new Error('You are not a participant in this appointment.');
+      if (isDoctor) await validateDoctorRelation(transaction, appointment.data().patientId);
+      requireAccount();
+      transaction.set(doc(collection(db, 'consultation_messages')), { appointmentId, senderId: account.uid, senderName: account.fullName, senderRole: account.role, text: text.trim(), createdAt: serverTimestamp() });
+    });
   };
-
-  const openVideoCall = (aptOrName: Appointment | string) => {
-    if (typeof aptOrName === 'string') {
-      const apt: Appointment = {
-        id: `apt_quick_${Date.now()}`,
-        patientId: authState.currentUser?.uid || 'patient_direct',
-        patientName: aptOrName || authState.currentUser?.fullName || 'Patient',
-        doctorId: authState.currentUser?.role?.toLowerCase() === 'doctor' ? authState.currentUser.uid : 'doctor_on_call',
-        doctorName: authState.currentUser?.role?.toLowerCase() === 'doctor' ? authState.currentUser.fullName : 'Attending Clinician',
-        doctorSpecialty: 'Telehealth Care',
-        date: 'Today',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: 'Video Call',
-        status: 'In Progress',
-        symptoms: 'Virtual clinical consultation.',
-      };
-      setActiveCallAppointment(apt);
-    } else {
-      setActiveCallAppointment(aptOrName);
-    }
-    setIsVideoCallOpen(true);
+  const openVideoCall = (input: Appointment | string) => {
+    const appointments = isDoctor ? view.doctorAppointmentsQueue : view.patientAppointments;
+    const appointment = typeof input === 'string' ? appointments.find(item => item.patientId === input || item.patientName === input) : appointments.find(item => item.id === input.id);
+    if (!appointment || appointment.type !== 'Video Call' || !['scheduled', 'upcoming', 'in progress'].includes(appointment.status.toLowerCase())) { setActionError({ scope: scopeKey, message: 'Choose an active booked video consultation.' }); return; }
+    setActionError(null); setActiveCallAppointment(appointment); setIsVideoCallOpen(true);
   };
-
-  const closeVideoCall = () => {
-    setIsVideoCallOpen(false);
-    setActiveCallAppointment(null);
+  const closeVideoCall = () => { setIsVideoCallOpen(false); setActiveCallAppointment(null); };
+  const openEHR = (patientName = '', patientId = '') => {
+    if (!isDoctor || !verified) return;
+    if (patientId && !view.patientDirectory.some(patient => patient.id === patientId)) { setActionError({ scope: scopeKey, message: 'Choose a patient in your care directory.' }); return; }
+    setActionError(null); setTargetEhrPatientName(patientName); setTargetEhrPatientId(patientId); setIsEHRModalOpen(true);
   };
-
-  const openEHR = (patientName: string = '', patientId: string = '') => {
-    setTargetEhrPatientName(patientName);
-    setTargetEhrPatientId(patientId);
-    setIsEHRModalOpen(true);
-  };
-
-  const closeEHR = () => {
-    setIsEHRModalOpen(false);
-  };
-
-  return (
-    <TelehealthContext.Provider
-      value={{
-        ...authState,
-        ...telemetryState,
-        patientAppointments,
-        doctorAppointmentsQueue,
-        prescriptions,
-        medicalRecords,
-        clinicalRecords,
-        patientDirectory,
-        vitalLogs,
-        consultationMessages,
-        addAppointment,
-        updateAppointmentStatus,
-        addPrescription,
-        addMedicalRecord,
-        updateMedicalRecordStatus,
-        addClinicalNote,
-        logVitalSign,
-        sendConsultationMessage,
-        isVideoCallOpen,
-        activeCallAppointment,
-        openVideoCall,
-        closeVideoCall,
-        isEHRModalOpen,
-        targetEhrPatientName,
-        targetEhrPatientId,
-        openEHR,
-        closeEHR,
-        isSimulatorDrawerOpen,
-        openSimulator: () => setIsSimulatorDrawerOpen(true),
-        closeSimulator: () => setIsSimulatorDrawerOpen(false),
-        isESP32GuideOpen,
-        openESP32Guide: () => setIsESP32GuideOpen(true),
-        closeESP32Guide: () => setIsESP32GuideOpen(false),
-        isEmergencySOSOpen,
-        openEmergencySOS: () => setIsEmergencySOSOpen(true),
-        closeEmergencySOS: () => setIsEmergencySOSOpen(false),
-        isAuthModalOpen,
-        openAuthModal: () => setIsAuthModalOpen(true),
-        closeAuthModal: () => setIsAuthModalOpen(false),
-      }}
-    >
-      {children}
-    </TelehealthContext.Provider>
-  );
+  return <TelehealthContext.Provider value={{
+    ...authState, ...telemetryState, ...view,
+    dataLoading: permitted && (data.scope !== scopeKey || data.loading), dataError: view.error || (actionError?.scope === scopeKey ? actionError.message : null),
+    retryData: () => { setActionError(null); setRevision(value => value + 1); },
+    addAppointment, updateAppointmentStatus, addPrescription, addMedicalRecord, updateMedicalRecordStatus, addClinicalNote, logVitalSign, sendConsultationMessage,
+    isVideoCallOpen: permitted && isVideoCallOpen && view.doctorAppointmentsQueue.concat(view.patientAppointments).some(item => item.id === activeCallAppointment?.id), activeCallAppointment, openVideoCall, closeVideoCall,
+    isEHRModalOpen: permitted && isEHRModalOpen, targetEhrPatientName, targetEhrPatientId, openEHR, closeEHR: () => setIsEHRModalOpen(false),
+    isSimulatorDrawerOpen, openSimulator: () => setIsSimulatorDrawerOpen(true), closeSimulator: () => setIsSimulatorDrawerOpen(false),
+    isESP32GuideOpen, openESP32Guide: () => setIsESP32GuideOpen(true), closeESP32Guide: () => setIsESP32GuideOpen(false),
+    isEmergencySOSOpen, openEmergencySOS: () => setIsEmergencySOSOpen(true), closeEmergencySOS: () => setIsEmergencySOSOpen(false),
+    isAuthModalOpen, openAuthModal: () => setIsAuthModalOpen(true), closeAuthModal: () => setIsAuthModalOpen(false),
+  }}>{children}</TelehealthContext.Provider>;
 }
-
 export function useTelehealth() {
   const context = useContext(TelehealthContext);
-  if (!context) {
-    throw new Error('useTelehealth must be used within a TelehealthProvider');
-  }
+  if (!context) throw new Error('useTelehealth must be used within a TelehealthProvider');
   return context;
 }

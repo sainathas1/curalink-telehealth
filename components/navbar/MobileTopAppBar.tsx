@@ -1,19 +1,8 @@
 'use client';
 
-import React from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-import {
-  HeartPulse,
-  ArrowLeft,
-  AlertTriangle,
-  Radio,
-  Video,
-  Shield,
-  Activity,
-  User,
-  Menu,
-} from 'lucide-react';
-import { UserProfile, LiveTelemetryPayload } from '../../lib/types';
+import { usePathname, useRouter } from 'next/navigation';
+import { Activity, AlertTriangle, Menu } from 'lucide-react';
+import type { UserProfile, LiveTelemetryPayload } from '../../lib/types';
 
 interface MobileTopAppBarProps {
   currentUser: UserProfile | null;
@@ -23,122 +12,24 @@ interface MobileTopAppBarProps {
   onOpenDrawer?: () => void;
 }
 
-export function MobileTopAppBar({
-  currentUser,
-  telemetry,
-  onEmergencySOS,
-  activeCriticalAlertsCount = 0,
-  onOpenDrawer,
-}: MobileTopAppBarProps) {
+export function MobileTopAppBar({ currentUser, telemetry, onEmergencySOS, onOpenDrawer }: MobileTopAppBarProps) {
   const router = useRouter();
   const pathname = usePathname();
-
-  // Determine if on subroute that should show a Back button
-  const isSubroute =
-    pathname.includes('/patient/device') ||
-    pathname.includes('/patient/prescriptions') ||
-    pathname.includes('/patient/records');
-
-  // Dynamic screen title based on route
-  const getScreenTitle = () => {
-    if (pathname.includes('/patient/vitals')) return 'Vitals Monitor';
-    if (pathname.includes('/patient/appointments')) return 'Appointments';
-    if (pathname.includes('/patient/profile')) return 'My Profile';
-    if (pathname.includes('/patient/device')) return 'Connected Devices';
-    if (pathname.includes('/patient/prescriptions')) return 'Prescriptions & Rx';
-    if (pathname.includes('/patient/records')) return 'Medical Records';
-    if (pathname.includes('/doctor/records')) return 'Medical Records & Vault';
-    return 'CuraLink Health';
-  };
-
-  const getScreenSubtitle = () => {
-    if (pathname.includes('/patient/vitals')) {
-      return telemetry.heartRate > 0 ? 'Live IoT Stream' : 'Sensor Standby';
-    }
-    if (pathname.includes('/patient/appointments')) return 'HD Video Consultations';
-    if (pathname.includes('/patient/profile')) return currentUser?.fullName || 'Verified Patient';
-    if (pathname.includes('/patient/device')) return 'Web Serial USB Probe';
-    return 'Continuous Telemetry';
-  };
+  const screenTitles: Record<string, string> = { vitals: 'Health monitoring', appointments: 'Appointments', profile: 'My profile', device: 'Connected devices', prescriptions: 'Prescriptions', records: 'Medical records' };
+  const route = pathname.split('/')[2];
+  const title = screenTitles[route] || 'Your care';
+  const isConnected = telemetry.sensorConnected;
 
   return (
-    <header
-      role="banner"
-      aria-label="Mobile Application Bar"
-      className="md:hidden sticky top-0 z-30 bg-slate-900/80 backdrop-blur-md border-b border-white/10 text-white shadow-lg shadow-black/20 transition-all select-none"
-      style={{
-        paddingTop: 'max(0.6rem, env(safe-area-inset-top, 0px))',
-      }}
-    >
-      <div className="px-4 py-2.5 flex items-center justify-between gap-3">
-        {/* Leading Item: Hamburger menu / Back button & Brand */}
-        <div className="flex items-center gap-2 min-w-0">
-          {onOpenDrawer && (
-            <button
-              onClick={onOpenDrawer}
-              aria-label="Open Navigation Drawer"
-              className="w-9 h-9 rounded-xl bg-slate-800/60 hover:bg-slate-700/80 active:scale-95 text-slate-200 flex items-center justify-center transition-all duration-300 border border-white/10 cursor-pointer shrink-0"
-            >
-              <Menu className="w-5 h-5 text-teal-400" />
-            </button>
-          )}
-
-          {isSubroute ? (
-            <button
-              onClick={() => router.back()}
-              aria-label="Go back"
-              className="w-9 h-9 rounded-xl bg-slate-800/60 hover:bg-slate-700/80 active:scale-95 text-slate-200 flex items-center justify-center transition-all duration-300 border border-white/10 cursor-pointer shrink-0"
-            >
-              <ArrowLeft className="w-5 h-5 text-teal-400" />
-            </button>
-          ) : (
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-teal-500 to-emerald-400 flex items-center justify-center text-white shadow-md shadow-teal-500/20 shrink-0">
-              <HeartPulse className="w-5 h-5 animate-pulse" />
-            </div>
-          )}
-
-          <div className="min-w-0">
-            <h1 className="text-sm font-bold tracking-tight text-white truncate leading-tight">
-              {getScreenTitle()}
-            </h1>
-            <p className="text-[11px] text-teal-300 font-medium truncate flex items-center gap-1">
-              <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  telemetry.status === 'critical'
-                    ? 'bg-rose-500 animate-ping'
-                    : telemetry.status === 'elevated'
-                    ? 'bg-amber-400'
-                    : 'bg-emerald-400'
-                }`}
-              />
-              <span className="truncate">{getScreenSubtitle()}</span>
-            </p>
-          </div>
+    <header aria-label="Patient application bar" className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl md:hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      <div className="flex min-h-[68px] items-center justify-between gap-2 px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          {onOpenDrawer && <button type="button" onClick={onOpenDrawer} aria-label="Open navigation" aria-haspopup="dialog" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-teal-600"><Menu size={22} aria-hidden="true" /></button>}
+          <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{title}</p><p className="mt-0.5 truncate text-[11px] text-slate-400">{route === 'dashboard' ? currentUser?.fullName || 'CuraLink' : 'CuraLink patient portal'}</p></div>
         </div>
-
-        {/* Trailing Actions: Live Vitals Chip + Emergency SOS */}
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Live Vitals Pill */}
-          {telemetry.heartRate > 0 && (
-            <div
-              onClick={() => router.push('/patient/vitals')}
-              className="px-2.5 py-1 rounded-full bg-slate-800/60 border border-white/10 text-[11px] font-mono font-bold text-teal-300 flex items-center gap-1.5 cursor-pointer shadow-sm hover:scale-105 transition-all duration-300"
-              title="View live vitals stream"
-            >
-              <Activity className="w-3.5 h-3.5 text-teal-400 animate-pulse" />
-              <span>{telemetry.heartRate} BPM</span>
-            </div>
-          )}
-
-          {/* Quick SOS Trigger Button */}
-          <button
-            onClick={onEmergencySOS}
-            aria-label="Trigger Emergency SOS"
-            className="px-3 py-1.5 rounded-2xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-rose-950/60 transition-all duration-300 flex items-center gap-1.5 cursor-pointer hover:scale-105"
-          >
-            <AlertTriangle className="w-3.5 h-3.5 animate-pulse" />
-            <span className="text-[11px] font-extrabold uppercase tracking-wider">SOS</span>
-          </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {isConnected && telemetry.heartRate > 0 && <button type="button" onClick={() => router.push('/patient/vitals')} aria-label={`View vitals, heart rate ${telemetry.heartRate} beats per minute`} className="flex items-center gap-1 rounded-full bg-teal-50 px-2.5 py-2 text-[10px] font-semibold text-teal-800 focus-visible:outline-2 focus-visible:outline-teal-600"><Activity size={13} aria-hidden="true" />{telemetry.heartRate} bpm</button>}
+          <button type="button" onClick={onEmergencySOS} aria-label="Open emergency help" className="flex min-h-10 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 focus-visible:outline-2 focus-visible:outline-rose-600"><AlertTriangle size={15} aria-hidden="true" /><span>SOS</span></button>
         </div>
       </div>
     </header>

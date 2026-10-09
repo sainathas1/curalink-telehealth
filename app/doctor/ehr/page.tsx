@@ -1,35 +1,19 @@
 'use client';
 
-import React from 'react';
+import { useState } from 'react';
+import { FileText, Pill, Plus, Search } from 'lucide-react';
 import { useTelehealth } from '../../../context/TelehealthContext';
-import { PrescriptionsList } from '../../../components/patient/PrescriptionsList';
+import { formatAppointmentDate } from '../../../components/patient/BookAppointmentModal';
+import { fieldClass, WorkspaceDataNotice } from '../../../components/doctor/DoctorWorkspaceSupport';
 
 export default function DoctorEHRRoute() {
-  const { currentUser, prescriptions, openEHR } = useTelehealth();
-
-  return (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-            Clinical EHR & E-Prescription Studio
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Author clinical observations, record differential diagnoses, and issue certified digital prescriptions
-          </p>
-        </div>
-        <button
-          onClick={() => openEHR('')}
-          className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer"
-        >
-          + Write New Prescription
-        </button>
-      </div>
-
-      <PrescriptionsList
-        prescriptions={prescriptions}
-        patientName="Patient"
-      />
-    </div>
-  );
+  const { prescriptions, patientDirectory, openEHR, dataLoading } = useTelehealth();
+  const [search, setSearch] = useState('');
+  const filtered = prescriptions.filter((prescription) => (prescription.patientName + ' ' + prescription.medicationName).toLowerCase().includes(search.trim().toLowerCase()));
+  return <div className="mx-auto max-w-7xl space-y-6">
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="care-eyebrow mb-2">Thoughtful care, clearly recorded</p><h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Prescribe & notes</h1><p className="mt-2 text-sm text-slate-500">Write prescriptions and clinical observations for your assigned patients.</p></div><button type="button" onClick={() => openEHR('', '')} disabled={dataLoading || !patientDirectory.length} className="care-button shrink-0"><Plus size={17} aria-hidden="true" />Create care record</button></div>
+    <WorkspaceDataNotice />
+    <div className="care-card p-4"><label htmlFor="prescription-search" className="sr-only">Search prescriptions by patient or medication</label><div className="relative"><Search size={17} className="absolute left-3 top-3.5 text-slate-400" aria-hidden="true" /><input id="prescription-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search patient or medication" className={fieldClass + ' pl-9'} /></div></div>
+    <section className="care-card overflow-hidden" aria-labelledby="prescription-history-title"><div className="border-b border-slate-100 px-5 py-5 sm:px-7"><h2 id="prescription-history-title" className="text-base font-semibold text-slate-900">Prescription history</h2><p className="mt-1 text-xs text-slate-400">{filtered.length} saved {filtered.length === 1 ? 'prescription' : 'prescriptions'}</p></div>{!filtered.length ? <div className="px-5 py-14 text-center"><span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-teal-700"><Pill size={25} aria-hidden="true" /></span><h3 className="text-base font-semibold text-slate-800">{dataLoading ? 'Loading prescriptions' : prescriptions.length ? 'No matching prescriptions' : 'Your care records start here'}</h3><p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-500">{prescriptions.length ? 'Try a different patient or medication name.' : 'Saved prescriptions will appear here. Clinical notes are available in Medical records.'}</p></div> : <ul className="divide-y divide-slate-100">{filtered.map((prescription) => <li key={prescription.id} className="p-5 sm:px-7"><div className="flex flex-col justify-between gap-3 sm:flex-row"><div><h3 className="text-sm font-semibold text-slate-900">{prescription.medicationName}</h3><p className="mt-1 text-xs text-teal-800">{prescription.patientName}</p><p className="mt-2 text-xs text-slate-500">{prescription.dosage} · {prescription.frequency} · {prescription.duration}</p><p className="mt-2 text-[11px] text-slate-400">Issued {formatAppointmentDate(prescription.dateIssued)} · Valid until {formatAppointmentDate(prescription.validUntil)}</p></div><span className="h-fit w-fit rounded-full bg-teal-50 px-2.5 py-1 text-[10px] text-teal-800">{prescription.status}</span></div>{prescription.instructions && <p className="mt-4 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">{prescription.instructions}</p>}<div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-[11px] text-slate-400">{prescription.doctorName} · {prescription.refillsLeft} refills</p><button type="button" onClick={() => openEHR(prescription.patientName, prescription.patientId)} className="flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-teal-800 focus-visible:outline-2 focus-visible:outline-teal-700"><FileText size={14} aria-hidden="true" />New record for this patient</button></div></li>)}</ul>}</section>
+  </div>;
 }

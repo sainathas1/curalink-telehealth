@@ -1,1022 +1,283 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Appointment } from '../../lib/types';
-import { db } from '../../lib/firebase';
-import { collection, query, where, getDocs, doc, setDoc, addDoc } from 'firebase/firestore';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { collection, doc, getDocs, query, where } from 'firebase/firestore';
+import { ArrowLeft, ArrowRight, Calendar, Check, CheckCircle2, CreditCard, LoaderCircle, Search, ShieldCheck, X } from 'lucide-react';
+import { auth, db } from '../../lib/firebase';
+import type { Appointment } from '../../lib/types';
 import { useTelehealth } from '../../context/TelehealthContext';
-import {
-  X,
-  Calendar,
-  Clock,
-  Video,
-  Stethoscope,
-  Star,
-  CheckCircle2,
-  CreditCard,
-  ShieldCheck,
-  ArrowRight,
-  ArrowLeft,
-  Smartphone,
-  Landmark,
-  Sparkles,
-  RefreshCw,
-  Copy,
-  Check,
-  Lock,
-  UserX,
-  Search,
-} from 'lucide-react';
 
 export interface ClinicianOption {
   id: string;
   name: string;
   specialty: string;
-  rating: number;
-  reviewsCount: number;
   avatar: string;
-}
-
-/**
- * Generates dynamic upcoming available consultation dates starting from tomorrow.
- * Uses native JavaScript Date objects and Intl.DateTimeFormat for clean formatting (e.g. 'Wednesday, Oct 7').
- * Guarantees zero duplicate entries in the returned array.
- */
-export function generateAvailableDates(count: number = 7): string[] {
-  const dates: string[] = [];
-  const baseDate = new Date();
-
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  });
-
-  for (let i = 1; i <= count; i++) {
-    const nextDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + i);
-    const formatted = formatter.format(nextDate);
-    if (!dates.includes(formatted)) {
-      dates.push(formatted);
-    }
-  }
-
-  return dates;
 }
 
 interface BookAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onBook: (newAppointment: Appointment) => void;
+  onBook: (newAppointment: Appointment) => Promise<void>;
   patientName: string;
   patientId: string;
 }
 
-type PaymentTab = 'razorpay' | 'upi' | 'card' | 'netbanking';
+interface RazorpayResponse {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}
 
-export function BookAppointmentModal({
-  isOpen,
-  onClose,
-  onBook,
-  patientName,
-  patientId,
-}: BookAppointmentModalProps) {
+interface RazorpayCheckout {
+  open: () => void;
+  on: (event: 'payment.failed', handler: (response: { error?: { description?: string } }) => void) => void;
+}
+
+type RazorpayConstructor = new (options: Record<string, unknown>) => RazorpayCheckout;
+type CheckoutWindow = Window & { Razorpay?: RazorpayConstructor };
+
+const TIME_SLOTS = ['09:00 AM - 09:30 AM', '10:00 AM - 10:30 AM', '02:30 PM - 03:00 PM', '04:30 PM - 05:00 PM'];
+const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/10';
+
+/** Canonical dates for the next seven days in the clinic's India Standard Time. */
+export function generateAvailableDates(count = 7): string[] {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0);
+  return Array.from({ length: count }, (_, index) => new Date(Date.UTC(value('year'), value('month') - 1, value('day') + index + 1)).toISOString().slice(0, 10));
+}
+
+export function formatAppointmentDate(value: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const parsed = new Date(value + 'T12:00:00+05:30');
+  return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(parsed);
+}
+
+async function loadRazorpay(): Promise<RazorpayConstructor> {
+  const checkoutWindow = window as CheckoutWindow;
+  if (checkoutWindow.Razorpay) return checkoutWindow.Razorpay;
+  await new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById('curalink-razorpay-sdk') as HTMLScriptElement | null;
+    const script = existing || document.createElement('script');
+    const timer = window.setTimeout(() => reject(new Error('The payment checkout took too long to load. Please try again.')), 15000);
+    script.addEventListener('load', () => { window.clearTimeout(timer); resolve(); }, { once: true });
+    script.addEventListener('error', () => { window.clearTimeout(timer); script.remove(); reject(new Error('Payment checkout could not load. Please check your connection.')); }, { once: true });
+    if (!existing) {
+      script.id = 'curalink-razorpay-sdk';
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      document.body.appendChild(script);
+    }
+  });
+  if (!checkoutWindow.Razorpay) throw new Error('Payment checkout is unavailable. Please try again.');
+  return checkoutWindow.Razorpay;
+}
+
+export function BookAppointmentModal({ isOpen, onClose, onBook, patientName, patientId }: BookAppointmentModalProps) {
   const { currentUser } = useTelehealth();
-
-  // Step: 'details' | 'payment'
-  const [step, setStep] = useState<'details' | 'payment'>('details');
-
-  // Clinicians from Firestore
+  const [step, setStep] = useState<'details' | 'review'>('details');
   const [doctors, setDoctors] = useState<ClinicianOption[]>([]);
-  const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isLoadingDoctors, setIsLoadingDoctors] = useState(true);
+  const [doctorsError, setDoctorsError] = useState('');
+  const [reloadDoctors, setReloadDoctors] = useState(0);
+  const [search, setSearch] = useState('');
+  const [specialty, setSpecialty] = useState('All');
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
+  const dates = useMemo(() => isOpen ? generateAvailableDates() : [], [isOpen]);
+  const [date, setDate] = useState(() => generateAvailableDates()[0]);
+  const [time, setTime] = useState(TIME_SLOTS[1]);
+  const [visitType, setVisitType] = useState<Appointment['type']>('Video Call');
+  const [symptoms, setSymptoms] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
+  const [savedAppointment, setSavedAppointment] = useState<Appointment | null>(null);
+  const [paymentReceipt, setPaymentReceipt] = useState<RazorpayResponse | null>(null);
+  const paymentReceiptRef = useRef<RazorpayResponse | null>(null);
+  const appointmentIdRef = useRef('');
+  const savingRef = useRef(false);
+  const launchingRef = useRef(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
-  // Dynamic available consultation dates (next 7 days starting from tomorrow)
-  const availableDates = useMemo(() => generateAvailableDates(7), []);
-
-  // Form selections
-  const [specialtyFilter, setSpecialtyFilter] = useState<string>('All');
-  const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
-  const [date, setDate] = useState<string>(() => availableDates[0] || '');
-  const [timeSlot, setTimeSlot] = useState<string>('10:00 AM - 10:30 AM');
-  const [visitType, setVisitType] = useState<'Video Call' | 'In-Person Consultation' | 'Routine Checkup'>('Video Call');
-  const [symptoms, setSymptoms] = useState<string>('');
-
-  // Keep date selection valid and in sync with dynamically generated dates
   useEffect(() => {
     if (!isOpen) return;
-    if (!availableDates.includes(date)) {
-      setDate(availableDates[0] || '');
-    }
-  }, [isOpen, availableDates, date]);
-
-  // Payment states
-  const [activePaymentTab, setActivePaymentTab] = useState<PaymentTab>('razorpay');
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [isSuccess, setIsSuccess] = useState<boolean>(false);
-  const [confirmedTxnId, setConfirmedTxnId] = useState<string>('');
-  const [confirmedMethod, setConfirmedMethod] = useState<string>('Razorpay');
-  const [copiedUpi, setCopiedUpi] = useState<boolean>(false);
-
-  // Card form state
-  const [cardNumber, setCardNumber] = useState('4111 2222 3333 1111');
-  const [cardExpiry, setCardExpiry] = useState('12/28');
-  const [cardCvv, setCardCvv] = useState('888');
-  const [cardHolder, setCardHolder] = useState(patientName || 'Patient');
-
-  // Netbanking & UPI custom state
-  const [selectedBank, setSelectedBank] = useState('HDFC Bank');
-  const [customUpi, setCustomUpi] = useState('');
-
-  // Fetch verified clinicians strictly from Firestore (role == 'doctor' AND isVerified == true)
-  useEffect(() => {
-    if (!isOpen) return;
-
-    async function fetchClinicians() {
-      setIsLoadingDoctors(true);
-      try {
-        const docsList: ClinicianOption[] = [];
-        const seenIds = new Set<string>();
-
-        const appendVerifiedDoctors = (snapshot: any) => {
-          snapshot.forEach((docSnap: any) => {
-            if (seenIds.has(docSnap.id)) return;
-            const data = docSnap.data();
-            // Strict enforcement: strictly users where role == 'doctor' AND isVerified == true
-            // Unverified doctors must never be rendered in the patient UI
-            if (data.isVerified === true && data.role?.toLowerCase() === 'doctor') {
-              seenIds.add(docSnap.id);
-              docsList.push({
-                id: docSnap.id,
-                name: data.fullName || data.name || 'Verified Clinician',
-                specialty: data.specialty || 'General Telehealth & Internal Medicine',
-                rating: data.rating || 5.0,
-                reviewsCount: data.reviewsCount || 1,
-                avatar:
-                  data.photoURL ||
-                  data.avatar ||
-                  'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
-              });
-            }
-          });
-        };
-
-        // 1. Strict Firestore query for role == 'doctor' AND isVerified == true
-        try {
-          const qLower = query(
-            collection(db, 'users'),
-            where('role', '==', 'doctor'),
-            where('isVerified', '==', true)
-          );
-          const snapLower = await getDocs(qLower);
-          appendVerifiedDoctors(snapLower);
-        } catch (err: any) {
-          console.warn('Doctor query (role: "doctor", isVerified: true) notice:', err?.message || err);
-        }
-
-        // 2. Also query role == 'Doctor' in case of capitalized role values in legacy records
-        try {
-          const qUpper = query(
-            collection(db, 'users'),
-            where('role', '==', 'Doctor'),
-            where('isVerified', '==', true)
-          );
-          const snapUpper = await getDocs(qUpper);
-          appendVerifiedDoctors(snapUpper);
-        } catch (err: any) {
-          console.warn('Doctor query (role: "Doctor", isVerified: true) notice:', err?.message || err);
-        }
-
-        // Strict empty state handling: No mock/fake unverified fallback doctors!
-        setDoctors(docsList);
-        setSelectedDoctorId((prev) => (prev && docsList.some((d) => d.id === prev) ? prev : docsList[0]?.id || ''));
-      } catch (err) {
-        console.error('Error fetching verified clinicians:', err);
-      } finally {
-        setIsLoadingDoctors(false);
-      }
-    }
-
-    fetchClinicians();
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (savedAppointment) closeRef.current?.focus();
+  }, [savedAppointment]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const verified = query(collection(db, 'users'), where('role', 'in', ['doctor', 'Doctor']), where('isVerified', '==', true));
+    getDocs(verified).then((snapshot) => {
+      if (cancelled) return;
+      const options = snapshot.docs.filter((entry) => entry.data().isVerified === true && String(entry.data().role).toLowerCase() === 'doctor').map((entry) => {
+        const profile = entry.data();
+        return { id: entry.id, name: profile.fullName || profile.name || 'Clinician', specialty: profile.specialty || 'General medicine', avatar: profile.avatarUrl || profile.photoURL || '' };
+      });
+      setDoctors(options);
+      setSelectedDoctorId((previous) => options.some((doctor) => doctor.id === previous) ? previous : '');
+    }).catch(() => {
+      if (!cancelled) { setDoctors([]); setDoctorsError('We could not load the doctor directory. Please try again.'); }
+    }).finally(() => { if (!cancelled) setIsLoadingDoctors(false); });
+    return () => { cancelled = true; };
+  }, [isOpen, reloadDoctors]);
+
+  const selectedDoctor = doctors.find((doctor) => doctor.id === selectedDoctorId);
+  const specialties = ['All', ...Array.from(new Set(doctors.map((doctor) => doctor.specialty)))];
+  const visibleDoctors = doctors.filter((doctor) => (specialty === 'All' || doctor.specialty === specialty) && (doctor.name + ' ' + doctor.specialty).toLowerCase().includes(search.trim().toLowerCase()));
+  const hasValidPatient = currentUser?.uid === patientId && currentUser.role.toLowerCase() === 'patient';
+  const selectedDate = dates.includes(date) || paymentReceipt ? date : dates[0] || '';
+  const canContinue = hasValidPatient && !!selectedDoctor && dates.includes(selectedDate) && !isLoadingDoctors;
+
+  const handleClose = () => {
+    if (isProcessing) return;
+    if (savedAppointment) {
+      setSavedAppointment(null);
+      setPaymentReceipt(null);
+      paymentReceiptRef.current = null;
+      appointmentIdRef.current = '';
+      setStep('details');
+      setSymptoms('');
+      setError('');
+    }
+    setIsLoadingDoctors(true);
+    setDoctorsError('');
+    onClose();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') { event.preventDefault(); handleClose(); }
+    if (event.key !== 'Tab') return;
+    const controls = dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]');
+    if (!controls?.length) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  };
+
+  const saveAppointment = async (receipt: RazorpayResponse | null = paymentReceiptRef.current) => {
+    if (savingRef.current) return;
+    if (!selectedDoctor || !hasValidPatient || !currentUser) {
+      setError('Your account or selected clinician could not be confirmed. Please reopen booking and try again.');
+      return;
+    }
+    savingRef.current = true;
+    setIsProcessing(true);
+    setError('');
+    if (!appointmentIdRef.current) appointmentIdRef.current = doc(collection(db, 'appointments')).id;
+    const id = appointmentIdRef.current;
+    const appointment: Appointment = {
+      id, patientId: currentUser.uid, patientName: patientName || currentUser.fullName,
+      patientEmail: currentUser.email, patientPhone: currentUser.phoneNumber || '',
+      doctorId: selectedDoctor.id, doctorName: selectedDoctor.name,
+      doctorSpecialty: selectedDoctor.specialty, doctorAvatar: selectedDoctor.avatar,
+      date: selectedDate, time, type: visitType, status: 'scheduled', symptoms: symptoms.trim(),
+      meetingLink: '/call/' + id, bloodGroup: currentUser.bloodGroup || currentUser.bloodType || '',
+      knownAllergies: currentUser.knownAllergies || currentUser.allergies?.join(', ') || '',
+      chronicConditions: currentUser.chronicConditions || [], currentMedications: currentUser.currentMedications || '',
+      emergencyContact: currentUser.emergencyContact || '', paymentStatus: 'Pending', paymentAmount: 500,
+      paymentMethod: receipt ? 'Razorpay' : 'Payment pending', paymentTxnId: receipt?.razorpay_payment_id || '',
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      // The context callback is the only appointment writer. Reuse this id on retries.
+      await onBook(appointment);
+      setSavedAppointment(appointment);
+    } catch {
+      setError(receipt ? 'Your payment response was received, but the appointment could not be saved. Retry saving below; do not make another payment.' : 'Your appointment could not be saved. Please check your connection and try again.');
+    } finally {
+      savingRef.current = false;
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRazorpay = async () => {
+    if (!canContinue || isProcessing || launchingRef.current || paymentReceiptRef.current) return;
+    launchingRef.current = true;
+    setIsProcessing(true);
+    setError('');
+    try {
+      const key = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!key) throw new Error('Online payment is currently unavailable. You can book with payment pending.');
+      const Razorpay = await loadRazorpay();
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Please sign in again before opening checkout.');
+      const response = await fetch('/api/create-order', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+      const order = await response.json();
+      if (!response.ok || order.fallback || typeof order.orderId !== 'string' || !order.orderId.startsWith('order_') || order.amount !== 50000 || order.currency !== 'INR') throw new Error('Payment checkout is unavailable. Please try again or book with payment pending.');
+      const checkout = new Razorpay({
+        key, amount: order.amount, currency: order.currency, order_id: order.orderId,
+        name: 'CuraLink Telehealth', description: 'Consultation with ' + selectedDoctor?.name,
+        prefill: { name: currentUser?.fullName || patientName, email: currentUser?.email || '', contact: currentUser?.phoneNumber || '' },
+        theme: { color: '#0f766e' },
+        handler: (receipt: RazorpayResponse) => {
+          launchingRef.current = false;
+          if (!receipt.razorpay_payment_id || receipt.razorpay_order_id !== order.orderId || !receipt.razorpay_signature) {
+            setError('The payment response was incomplete. Check your payment status before trying again.');
+            setIsProcessing(false);
+            return;
+          }
+          paymentReceiptRef.current = receipt;
+          setPaymentReceipt(receipt);
+          void saveAppointment(receipt);
+        },
+        modal: { ondismiss: () => { launchingRef.current = false; if (!savingRef.current) setIsProcessing(false); } },
+      });
+      checkout.on('payment.failed', ({ error: paymentError }) => {
+        launchingRef.current = false;
+        setIsProcessing(false);
+        setError(paymentError?.description || 'The payment did not complete. No appointment has been saved.');
+      });
+      checkout.open();
+    } catch (checkoutError) {
+      launchingRef.current = false;
+      setIsProcessing(false);
+      setError(checkoutError instanceof Error ? checkoutError.message : 'Checkout could not open. Please try again.');
+    }
+  };
+
+  const handleReview = (event: FormEvent) => {
+    event.preventDefault();
+    if (!canContinue) return;
+    setError('');
+    setStep('review');
+  };
 
   if (!isOpen) return null;
 
-  const specialties = [
-    'All',
-    'Cardiology & Heart Rhythm',
-    'Pulmonology & Respiratory Care',
-    'General Internal Medicine',
-    'Neurology & Sleep Medicine',
-  ];
-
-  const filteredDoctors = doctors.filter((d) => {
-    const matchesSpecialty = specialtyFilter === 'All' || d.specialty === specialtyFilter;
-    const matchesSearch =
-      !searchQuery.trim() ||
-      d.name.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
-      d.specialty.toLowerCase().includes(searchQuery.toLowerCase().trim());
-    return matchesSpecialty && matchesSearch;
-  });
-
-  const selectedDoctor =
-    doctors.find((d) => d.id === selectedDoctorId) ||
-    (filteredDoctors.length > 0 ? filteredDoctors[0] : (doctors.length > 0 ? doctors[0] : null));
-
-  // Dynamic Razorpay SDK loader
-  const loadRazorpayScript = () => {
-    return new Promise<boolean>((resolve) => {
-      if (typeof window === 'undefined') return resolve(false);
-      if ((window as any).Razorpay) return resolve(true);
-
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
-
-  // Complete Payment and book appointment (calls addDoc with denormalized patient details)
-  const executePaymentSuccess = async (methodName: string) => {
-    setIsProcessing(true);
-    const generatedTxn = `PAY_${methodName.toUpperCase()}_${Date.now().toString(36).toUpperCase()}`;
-    setConfirmedTxnId(generatedTxn);
-    setConfirmedMethod(methodName);
-
-    try {
-      const exactDoctorId = selectedDoctor?.id || selectedDoctorId || '';
-
-      const appointmentPayload = {
-        patientId: patientId || currentUser?.uid || 'patient_user',
-        patientName: patientName || currentUser?.fullName || 'Patient',
-        patientEmail: currentUser?.email || 'No data provided',
-        patientPhone: currentUser?.phoneNumber || 'No data provided',
-        doctorId: exactDoctorId,
-        doctorName: selectedDoctor?.name || 'Verified Attending Physician',
-        doctorSpecialty: selectedDoctor?.specialty || 'General Telehealth & Internal Medicine',
-        doctorAvatar: selectedDoctor?.avatar || '',
-        date,
-        time: timeSlot,
-        type: visitType,
-        status: 'scheduled' as const,
-        symptoms: symptoms || 'Routine telehealth vitals review and general follow-up consultation.',
-        bloodGroup: currentUser?.bloodGroup || currentUser?.bloodType || 'No data provided',
-        knownAllergies: currentUser?.knownAllergies || (currentUser?.allergies ? currentUser.allergies.join(', ') : 'No data provided'),
-        chronicConditions: currentUser?.chronicConditions && currentUser.chronicConditions.length > 0 ? currentUser.chronicConditions : ['None'],
-        currentMedications: currentUser?.currentMedications || 'No data provided',
-        emergencyContact: currentUser?.emergencyContact || 'No data provided',
-        paymentStatus: 'Paid' as const,
-        paymentAmount: 500,
-        paymentTxnId: generatedTxn,
-        paymentMethod: methodName,
-        createdAt: new Date().toISOString(),
-      };
-
-      // Call addDoc directly on the appointments collection embedding denormalized patient details
-      const docRef = await addDoc(collection(db, 'appointments'), {
-        ...appointmentPayload,
-        status: 'scheduled',
-        doctorId: exactDoctorId,
-      });
-
-      const aptId = docRef.id;
-      const newAppointment: Appointment = {
-        ...appointmentPayload,
-        id: aptId,
-        meetingLink: `/call/${aptId}`,
-      };
-
-      // Ensure id and meetingLink are written back to Firestore document
-      await setDoc(doc(db, 'appointments', aptId), { id: aptId, meetingLink: `/call/${aptId}` }, { merge: true });
-
-      setIsProcessing(false);
-      setIsSuccess(true);
-
-      setTimeout(() => {
-        onBook(newAppointment);
-        setIsSuccess(false);
-        setStep('details');
-        onClose();
-      }, 1800);
-    } catch (err) {
-      console.warn('Notice: Firestore addDoc fallback:', err);
-      const fallbackAptId = `apt_${Date.now()}`;
-      const exactDoctorId = selectedDoctor?.id || selectedDoctorId || '';
-      const fallbackAppointment: Appointment = {
-        id: fallbackAptId,
-        patientId: patientId || currentUser?.uid || 'patient_user',
-        patientName: patientName || currentUser?.fullName || 'Patient',
-        patientEmail: currentUser?.email || 'No data provided',
-        patientPhone: currentUser?.phoneNumber || 'No data provided',
-        doctorId: exactDoctorId,
-        doctorName: selectedDoctor?.name || 'Verified Attending Physician',
-        doctorSpecialty: selectedDoctor?.specialty || 'General Telehealth & Internal Medicine',
-        doctorAvatar: selectedDoctor?.avatar || '',
-        date,
-        time: timeSlot,
-        type: visitType,
-        status: 'scheduled',
-        symptoms: symptoms || 'Routine telehealth vitals review and general follow-up consultation.',
-        meetingLink: `/call/${fallbackAptId}`,
-        bloodGroup: currentUser?.bloodGroup || currentUser?.bloodType || 'No data provided',
-        knownAllergies: currentUser?.knownAllergies || (currentUser?.allergies ? currentUser.allergies.join(', ') : 'No data provided'),
-        chronicConditions: currentUser?.chronicConditions && currentUser.chronicConditions.length > 0 ? currentUser.chronicConditions : ['None'],
-        currentMedications: currentUser?.currentMedications || 'No data provided',
-        emergencyContact: currentUser?.emergencyContact || 'No data provided',
-        paymentStatus: 'Paid',
-        paymentAmount: 500,
-        paymentTxnId: generatedTxn,
-        paymentMethod: methodName,
-        createdAt: new Date().toISOString(),
-      };
-
-      setIsProcessing(false);
-      setIsSuccess(true);
-
-      setTimeout(() => {
-        onBook(fallbackAppointment);
-        setIsSuccess(false);
-        setStep('details');
-        onClose();
-      }, 1800);
-    }
-  };
-
-  // Official Razorpay Gateway trigger
-  const handleRazorpayGateway = async () => {
-    setIsProcessing(true);
-    try {
-      const res = await loadRazorpayScript();
-
-      if (!res) {
-        alert('Razorpay popup could not be loaded (likely blocked by ad-blocker). You can use direct UPI, Card, or Demo Pass below.');
-        setIsProcessing(false);
-        return;
-      }
-
-      const orderResponse = await fetch('/api/create-order', { method: 'POST' });
-      const orderData = await orderResponse.json();
-
-      const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_Tjvb5EHmaluLGr',
-        amount: 50000,
-        currency: 'INR',
-        name: 'CuraLink Telehealth',
-        description: `Consultation Fee with ${selectedDoctor?.name || 'Verified Clinician'}`,
-        order_id: orderData.orderId,
-        handler: function (_response: any) {
-          executePaymentSuccess('Razorpay');
-        },
-        modal: {
-          ondismiss: function () {
-            setIsProcessing(false);
-          },
-        },
-        prefill: {
-          name: patientName || 'Patient',
-          email: 'patient@curalink.health',
-          contact: '9999999999',
-        },
-        theme: {
-          color: '#0D9488',
-        },
-      };
-
-      const paymentObject = new (window as any).Razorpay(options);
-      paymentObject.on('payment.failed', function (response: any) {
-        console.error('Razorpay payment failed:', response.error);
-        alert(`Payment error: ${response.error?.description || 'Method inactive'}. You can use UPI or Card directly.`);
-        setIsProcessing(false);
-      });
-      paymentObject.open();
-    } catch (err) {
-      console.error('Razorpay order launch error:', err);
-      executePaymentSuccess('DIRECT_FALLBACK');
-    }
-  };
-
-  const copyUpiId = () => {
-    navigator.clipboard.writeText('curalink.telehealth@icici');
-    setCopiedUpi(true);
-    setTimeout(() => setCopiedUpi(false), 2000);
-  };
-
-  const handleProceedToPayment = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentUser) return;
-    if (!selectedDoctor || filteredDoctors.length === 0) return;
-    setStep('payment');
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-teal-700 to-emerald-800 text-white p-5 sm:p-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-teal-200 shrink-0">
-              {step === 'payment' ? <CreditCard className="w-5 h-5" /> : <Calendar className="w-5 h-5" />}
-            </div>
-            <div>
-              <h3 className="text-lg font-bold">
-                {step === 'payment' ? 'Secure Consultation Payment' : 'Book Telehealth Consultation'}
-              </h3>
-              <p className="text-xs text-teal-100">
-                {step === 'payment'
-                  ? 'Fee: ₹500.00 • Razorpay, UPI QR, Card & NetBanking'
-                  : 'Schedule HD Virtual Clinic Visit with CuraLink Specialist'}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-3 backdrop-blur-sm sm:p-6">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="booking-title" onKeyDown={handleKeyDown} className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:px-7">
+          <div><p className="care-eyebrow mb-2">Your next step to better care</p><h2 id="booking-title" className="text-xl font-semibold tracking-tight text-slate-900">{savedAppointment ? 'Your visit is booked' : step === 'review' ? 'Review your appointment' : 'Find the right care'}</h2><p className="mt-1 text-xs text-slate-500">{savedAppointment ? 'Your appointment has been saved to your account.' : 'Choose a verified clinician and a preferred consultation time.'}</p></div>
+          <button ref={closeRef} type="button" onClick={handleClose} disabled={isProcessing} aria-label="Close booking" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-teal-600 disabled:opacity-40"><X size={20} aria-hidden="true" /></button>
         </div>
-
-        {/* Success Confirmation Screen */}
-        {isSuccess ? (
-          <div className="p-8 sm:p-10 text-center space-y-4 animate-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20 animate-bounce">
-              <CheckCircle2 className="w-9 h-9" />
-            </div>
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                Payment Confirmed & Verified
-              </span>
-              <h4 className="text-xl font-bold text-slate-900 pt-2">Appointment Scheduled!</h4>
-              <p className="text-xs text-slate-500 font-mono">Transaction ID: {confirmedTxnId}</p>
-            </div>
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 max-w-md mx-auto text-left text-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Clinician:</span>
-                <strong className="text-slate-800">{selectedDoctor?.name || 'Verified Attending Physician'}</strong>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Specialty:</span>
-                <span className="text-teal-700 font-medium">{selectedDoctor?.specialty || 'General Telehealth & Internal Medicine'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Scheduled Slot:</span>
-                <span className="font-semibold text-slate-800">{date} at {timeSlot}</span>
-              </div>
-              <div className="flex items-center justify-between pt-1 border-t border-slate-200">
-                <span className="text-slate-500">Amount Paid ({confirmedMethod}):</span>
-                <span className="font-extrabold text-emerald-700 text-sm">₹500.00</span>
-              </div>
-            </div>
-            <p className="text-xs text-teal-700 font-medium flex items-center justify-center gap-1.5 pt-2">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Finalizing appointment credentials & video room...
-            </p>
-          </div>
-        ) : step === 'payment' ? (
-          /* ================= STEP 2: PAYMENT CHECKOUT ================= */
-          <div className="p-5 sm:p-6 space-y-5">
-            {/* Appointment Summary Strip */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-teal-600/10 text-teal-700 flex items-center justify-center shrink-0">
-                  <Stethoscope className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">{selectedDoctor?.name || 'Verified Attending Physician'}</h4>
-                  <p className="text-xs text-teal-700 font-medium">{selectedDoctor?.specialty || 'General Telehealth & Internal Medicine'}</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">{date} • {timeSlot}</p>
-                </div>
-              </div>
-              <div className="text-right sm:border-l sm:border-slate-200 sm:pl-4">
-                <span className="text-[10px] text-slate-400 block font-mono">Amount Due</span>
-                <span className="text-xl font-black text-teal-800">₹500.00</span>
-              </div>
-            </div>
-
-
-            {/* Payment Method Selector Tabs */}
-            <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setActivePaymentTab('razorpay')}
-                className={`py-2 px-1 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  activePaymentTab === 'razorpay'
-                    ? 'bg-teal-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Razorpay</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActivePaymentTab('upi')}
-                className={`py-2 px-1 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  activePaymentTab === 'upi'
-                    ? 'bg-teal-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Smartphone className="w-4 h-4" />
-                <span>UPI / QR</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActivePaymentTab('card')}
-                className={`py-2 px-1 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  activePaymentTab === 'card'
-                    ? 'bg-teal-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <CreditCard className="w-4 h-4" />
-                <span>Card</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActivePaymentTab('netbanking')}
-                className={`py-2 px-1 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  activePaymentTab === 'netbanking'
-                    ? 'bg-teal-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Landmark className="w-4 h-4" />
-                <span>NetBanking</span>
-              </button>
-            </div>
-
-            {/* TAB 1: Razorpay Official Modal */}
-            {activePaymentTab === 'razorpay' && (
-              <div className="p-5 rounded-2xl border border-teal-200 bg-gradient-to-br from-teal-50/60 to-white space-y-4 animate-in fade-in duration-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-black text-sm">
-                    R
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                      <span>Official Razorpay Checkout Gateway</span>
-                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.2 rounded-full">
-                        Test Mode Active
-                      </span>
-                    </h5>
-                    <p className="text-[11px] text-slate-500">
-                      Launches the official Razorpay test popup with all standard cards, UPI handles, and wallets.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="text-[11px] text-slate-600 bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <span>Merchant Key:</span>
-                  <span className="font-mono text-teal-800 font-bold">rzp_test_Tjvb5EHmaluLGr</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleRazorpayGateway}
-                  disabled={isProcessing}
-                  className="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isProcessing ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Opening Razorpay Gateway...</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>Pay ₹500.00 via Razorpay Popup</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-
-            {/* TAB 2: UPI / QR Code */}
-            {activePaymentTab === 'upi' && (
-              <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-4 animate-in fade-in duration-200">
-                <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-xl border border-slate-200">
-                  {/* QR SVG */}
-                  <div className="p-2.5 bg-white rounded-xl border border-slate-200 shadow-xs shrink-0 flex flex-col items-center">
-                    <svg viewBox="0 0 100 100" className="w-24 h-24" fill="#0F172A">
-                      <rect x="0" y="0" width="30" height="30" rx="3" />
-                      <rect x="5" y="5" width="20" height="20" fill="white" />
-                      <rect x="9" y="9" width="12" height="12" />
-                      <rect x="70" y="0" width="30" height="30" rx="3" />
-                      <rect x="75" y="5" width="20" height="20" fill="white" />
-                      <rect x="79" y="9" width="12" height="12" />
-                      <rect x="0" y="70" width="30" height="30" rx="3" />
-                      <rect x="5" y="75" width="20" height="20" fill="white" />
-                      <rect x="9" y="79" width="12" height="12" />
-                      <rect x="40" y="10" width="10" height="10" />
-                      <rect x="40" y="30" width="10" height="10" />
-                      <rect x="10" y="40" width="10" height="10" />
-                      <rect x="30" y="40" width="10" height="10" />
-                      <rect x="50" y="50" width="10" height="10" />
-                      <rect x="70" y="50" width="10" height="10" />
-                      <rect x="90" y="50" width="10" height="10" />
-                      <rect x="50" y="70" width="10" height="10" />
-                      <rect x="70" y="80" width="10" height="10" />
-                      <rect x="40" y="80" width="20" height="10" />
-                    </svg>
-                    <span className="text-[10px] text-slate-500 font-mono mt-1">₹500.00 Fixed</span>
-                  </div>
-
-                  <div className="space-y-2 flex-1 text-center sm:text-left">
-                    <span className="text-xs font-bold text-slate-900 block">Scan using any UPI App</span>
-                    <p className="text-[11px] text-slate-500">Google Pay, PhonePe, Paytm, BHIM</p>
-                    <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-xl text-xs font-mono">
-                      <span className="flex-1 truncate text-slate-800 font-bold">curalink.telehealth@icici</span>
-                      <button
-                        type="button"
-                        onClick={copyUpiId}
-                        className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-teal-700 hover:bg-teal-50 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
-                      >
-                        {copiedUpi ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedUpi ? 'Copied' : 'Copy'}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={customUpi}
-                    onChange={(e) => setCustomUpi(e.target.value)}
-                    placeholder="or enter your UPI ID (e.g. mobile@okhdfcbank)"
-                    className="flex-1 p-2.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-teal-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => executePaymentSuccess('UPI')}
-                    disabled={isProcessing}
-                    className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer shrink-0 disabled:opacity-50"
-                  >
-                    {isProcessing ? 'Verifying...' : 'Pay ₹500 via UPI'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 3: Card Form */}
-            {activePaymentTab === 'card' && (
-              <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-3 animate-in fade-in duration-200">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Card Number</label>
-                  <input
-                    type="text"
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(e.target.value)}
-                    placeholder="4111 2222 3333 4444"
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-teal-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Expiry Date</label>
-                    <input
-                      type="text"
-                      value={cardExpiry}
-                      onChange={(e) => setCardExpiry(e.target.value)}
-                      placeholder="MM/YY"
-                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-teal-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">CVV</label>
-                    <input
-                      type="password"
-                      maxLength={4}
-                      value={cardCvv}
-                      onChange={(e) => setCardCvv(e.target.value)}
-                      placeholder="•••"
-                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono text-slate-800 focus:outline-none focus:border-teal-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Cardholder Name</label>
-                  <input
-                    type="text"
-                    value={cardHolder}
-                    onChange={(e) => setCardHolder(e.target.value)}
-                    placeholder="Name on card"
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-teal-500"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => executePaymentSuccess('CARD')}
-                  disabled={isProcessing}
-                  className="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>{isProcessing ? 'Processing Card...' : 'Pay ₹500.00 Securely'}</span>
-                </button>
-              </div>
-            )}
-
-            {/* TAB 4: NetBanking */}
-            {activePaymentTab === 'netbanking' && (
-              <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-3 animate-in fade-in duration-200">
-                <label className="block text-[11px] font-bold text-slate-700 uppercase">Select Bank</label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {['HDFC Bank', 'ICICI Bank', 'State Bank of India', 'Axis Bank', 'Kotak Mahindra', 'Punjab National'].map((bank) => (
-                    <button
-                      key={bank}
-                      type="button"
-                      onClick={() => setSelectedBank(bank)}
-                      className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${
-                        selectedBank === bank
-                          ? 'border-teal-600 bg-teal-50 text-teal-800 shadow-xs'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      {bank}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => executePaymentSuccess(selectedBank.replace(/\s+/g, '_'))}
-                  disabled={isProcessing}
-                  className="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 mt-3 disabled:opacity-50"
-                >
-                  <Landmark className="w-3.5 h-3.5" />
-                  <span>{isProcessing ? 'Connecting...' : `Pay ₹500 via ${selectedBank}`}</span>
-                </button>
-              </div>
-            )}
-
-            {/* Navigation Buttons */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setStep('details')}
-                disabled={isProcessing}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back to Details</span>
-              </button>
-
-              <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
-                <Lock className="w-3 h-3 text-slate-500" /> 256-bit Encrypted SSL
-              </span>
-            </div>
-          </div>
-        ) : (
-          /* ================= STEP 1: CONSULTATION DETAILS ================= */
-          <form onSubmit={handleProceedToPayment} className="p-5 sm:p-6 space-y-5">
-            {/* Specialty Filter Pills */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                1. Filter by Medical Specialty
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {(specialties || []).map((spec) => (
-                  <button
-                    key={spec}
-                    type="button"
-                    onClick={() => setSpecialtyFilter(spec)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                      specialtyFilter === spec
-                        ? 'bg-teal-600 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {spec === 'All' ? 'All Specialties' : spec.split('&')[0]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Doctor Selection Cards */}
-            <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  2. Select Clinician
-                </label>
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search doctor by name..."
-                    className="pl-8 pr-6 py-1.5 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-teal-500 w-full sm:w-52 placeholder:text-slate-400 shadow-2xs"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {isLoadingDoctors ? (
-                <div className="p-8 rounded-2xl bg-slate-50 border border-slate-200/80 text-center flex flex-col items-center justify-center gap-2">
-                  <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-xs font-semibold text-slate-600">Querying verified clinicians...</span>
-                </div>
-              ) : (filteredDoctors || []).length === 0 ? (
-                <div className="p-6 sm:p-8 rounded-2xl bg-slate-50 border border-slate-200/90 text-center flex flex-col items-center justify-center gap-2.5">
-                  <div className="w-11 h-11 rounded-2xl bg-teal-50 border border-teal-200/70 flex items-center justify-center text-teal-700">
-                    <UserX className="w-5 h-5 text-slate-500" />
-                  </div>
-                  <div className="space-y-1">
-                    <h5 className="text-xs sm:text-sm font-bold text-slate-800">
-                      No available clinicians at this time
-                    </h5>
-                    <p className="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
-                      {(doctors || []).length === 0
-                        ? 'There are currently no verified clinicians active in the portal. Please check back later once clinician credentials are verified by administration.'
-                        : `No verified clinicians match "${searchQuery || specialtyFilter}". Try clearing your filters.`}
-                    </p>
-                  </div>
-                  {(specialtyFilter !== 'All' || searchQuery.trim() !== '') && (doctors || []).length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSpecialtyFilter('All');
-                        setSearchQuery('');
-                      }}
-                      className="mt-1 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-[11px] font-bold border border-teal-200 transition-colors cursor-pointer"
-                    >
-                      Reset Filters
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-1">
-                  {(filteredDoctors || []).map((doc) => {
-                    const isSelected = selectedDoctorId === doc.id;
-                    return (
-                      <div
-                        key={doc.id}
-                        onClick={() => setSelectedDoctorId(doc.id)}
-                        className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-3 ${
-                          isSelected
-                            ? 'border-teal-600 bg-teal-50/60 shadow-xs'
-                            : 'border-slate-200 hover:border-slate-300 bg-white'
-                        }`}
-                      >
-                        <div className="w-12 h-12 rounded-xl bg-slate-200 overflow-hidden shrink-0">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={doc.avatar}
-                            alt={doc.name}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h5 className="text-xs font-bold text-slate-900 truncate">{doc.name}</h5>
-                          <p className="text-[11px] text-teal-700 truncate">{doc.specialty}</p>
-                          <div className="flex items-center gap-1 mt-0.5 text-[10px] text-slate-500">
-                            <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                            <span className="font-semibold text-slate-700">{doc.rating}</span>
-                            <span>({doc.reviewsCount})</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Visit Type, Date & Time */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Visit Modality
-                </label>
-                <div className="relative">
-                  <select
-                    value={visitType}
-                    onChange={(e) => setVisitType(e.target.value as any)}
-                    className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-teal-500"
-                  >
-                    <option value="Video Call">Virtual Video Call</option>
-                    <option value="In-Person Consultation">In-Person Consultation</option>
-                    <option value="Routine Checkup">Routine Tele-Checkup</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Preferred Date
-                </label>
-                <select
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-teal-500 cursor-pointer"
-                >
-                  {(availableDates || []).map((dateOption) => (
-                    <option key={dateOption} value={dateOption}>
-                      {dateOption}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Available Slot
-                </label>
-                <select
-                  value={timeSlot}
-                  onChange={(e) => setTimeSlot(e.target.value)}
-                  className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-teal-500"
-                >
-                  <option value="09:00 AM - 09:30 AM">09:00 AM - 09:30 AM</option>
-                  <option value="10:00 AM - 10:30 AM">10:00 AM - 10:30 AM</option>
-                  <option value="02:30 PM - 03:00 PM">02:30 PM - 03:00 PM</option>
-                  <option value="04:30 PM - 05:00 PM">04:30 PM - 05:00 PM</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Reason / Symptoms input */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Chief Symptoms & Reason for Visit
-              </label>
-              <textarea
-                value={symptoms}
-                onChange={(e) => setSymptoms(e.target.value)}
-                placeholder="Describe any symptoms, recent vital anomalies, or questions for your doctor..."
-                rows={2}
-                className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-teal-500 bg-white text-slate-800"
-              />
-            </div>
-
-            {/* Consultation Fee & Razorpay Payment Notice */}
-            <div className="p-3.5 bg-teal-50/80 rounded-2xl border border-teal-200/80 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-teal-600/10 text-teal-700 flex items-center justify-center shrink-0">
-                  <CreditCard className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="font-bold text-slate-800 block">Doctor Consultation Fee</span>
-                  <p className="text-[11px] text-teal-700 flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-teal-600" />
-                    Razorpay, UPI QR, Card & Instant Pass supported
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 block font-mono">Amount</span>
-                <span className="font-extrabold text-teal-900 text-sm">₹500.00</span>
-              </div>
-            </div>
-
-            {/* Footer Buttons */}
-            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="text-[11px] text-slate-500">
-                {!currentUser && (
-                  <span className="text-amber-600 font-semibold flex items-center gap-1">
-                    * Please sign in to schedule an appointment.
-                  </span>
-                )}
-                {!selectedDoctor && currentUser && (
-                  <span className="text-amber-600 font-semibold flex items-center gap-1">
-                    * Please select an available verified clinician to continue.
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!currentUser || !selectedDoctor || isLoadingDoctors || filteredDoctors.length === 0}
-                  className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span>{!currentUser ? 'Sign In Required' : 'Proceed to Payment (₹500.00)'}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </form>
-        )}
+        <div className="overflow-y-auto p-5 sm:p-7">
+          {error && <p role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+          {savedAppointment ? <div className="text-center"><span className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-teal-50 text-teal-700"><CheckCircle2 size={30} aria-hidden="true" /></span><h3 className="text-lg font-semibold text-slate-900">{savedAppointment.doctorName}</h3><p className="mt-1 text-sm text-slate-500">{formatAppointmentDate(savedAppointment.date)} · {savedAppointment.time}</p><p className="mt-5 rounded-xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-800">{paymentReceipt ? 'A payment response was received. Payment remains pending until it is confirmed.' : 'Your consultation fee is pending. No payment has been taken by this booking.'}</p>{paymentReceipt && <p className="mt-3 break-all text-xs text-slate-400">Payment reference: {paymentReceipt.razorpay_payment_id}</p>}<button type="button" onClick={handleClose} className="care-button mt-6 w-full justify-center">Done<Check size={16} aria-hidden="true" /></button></div> : step === 'review' ? <div className="space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5"><p className="text-base font-semibold text-slate-900">{selectedDoctor?.name}</p><p className="mt-1 text-sm text-teal-700">{selectedDoctor?.specialty}</p><div className="mt-4 space-y-2 text-sm text-slate-500"><p>{formatAppointmentDate(selectedDate)} · {time}</p><p>{visitType} · India Standard Time</p>{symptoms && <p className="border-t border-slate-200 pt-3">{symptoms}</p>}</div><div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><span className="text-sm text-slate-500">Consultation fee</span><strong className="text-lg text-slate-900">₹500</strong></div></div>
+            <div className="flex items-start gap-3 rounded-2xl border border-slate-200 p-4"><CreditCard size={20} className="mt-0.5 shrink-0 text-teal-700" aria-hidden="true" /><div><h3 className="text-sm font-semibold text-slate-800">Payment options</h3><p className="mt-1 text-xs leading-relaxed text-slate-500">Use Razorpay for card, UPI, or bank payments, or book with the fee pending. Payment status will show as pending until confirmed.</p></div></div>
+            {paymentReceipt ? <button type="button" disabled={isProcessing} onClick={() => void saveAppointment()} className="care-button w-full justify-center">{isProcessing ? <LoaderCircle size={16} className="motion-safe:animate-spin" aria-hidden="true" /> : <Check size={16} aria-hidden="true" />}Retry saving appointment</button> : <><button type="button" disabled={isProcessing || !canContinue} onClick={() => void handleRazorpay()} className="care-button w-full justify-center">{isProcessing ? <LoaderCircle size={16} className="motion-safe:animate-spin" aria-hidden="true" /> : <ShieldCheck size={16} aria-hidden="true" />}{isProcessing ? 'Please wait…' : 'Pay ₹500 with Razorpay'}</button><button type="button" disabled={isProcessing || !canContinue} onClick={() => void saveAppointment(null)} className="flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-600 disabled:opacity-40">Book with payment pending</button></>}
+            <button type="button" disabled={isProcessing || !!paymentReceipt} onClick={() => setStep('details')} className="flex min-h-10 items-center gap-2 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-teal-600 disabled:opacity-40"><ArrowLeft size={15} aria-hidden="true" />Edit appointment details</button>
+          </div> : <form onSubmit={handleReview} className="space-y-5">
+            <div className="grid gap-3 sm:grid-cols-2"><div><label htmlFor="doctor-search" className="mb-2 block text-xs font-semibold text-slate-700">Find a clinician</label><div className="relative"><Search size={16} className="absolute left-3 top-3.5 text-slate-400" aria-hidden="true" /><input id="doctor-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name or specialty" className={inputClass + ' pl-9'} /></div></div><div><label htmlFor="doctor-specialty" className="mb-2 block text-xs font-semibold text-slate-700">Specialty</label><select id="doctor-specialty" value={specialty} onChange={(event) => setSpecialty(event.target.value)} className={inputClass}>{specialties.map((value) => <option key={value} value={value}>{value === 'All' ? 'All specialties' : value}</option>)}</select></div></div>
+            <fieldset><legend className="mb-3 text-xs font-semibold text-slate-700">Choose your clinician</legend>{isLoadingDoctors ? <p role="status" className="flex items-center gap-2 rounded-xl bg-slate-50 p-5 text-sm text-slate-500"><LoaderCircle size={17} className="motion-safe:animate-spin" aria-hidden="true" />Loading verified clinicians…</p> : doctorsError ? <div role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700"><p>{doctorsError}</p><button type="button" onClick={() => { setIsLoadingDoctors(true); setDoctorsError(''); setReloadDoctors((count) => count + 1); }} className="mt-2 min-h-10 rounded-lg font-semibold underline focus-visible:outline-2 focus-visible:outline-rose-600">Try again</button></div> : visibleDoctors.length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center"><p className="text-sm font-medium text-slate-700">{doctors.length ? 'No matching clinicians' : 'No verified clinicians available yet'}</p><p className="mt-1 text-xs text-slate-500">{doctors.length ? 'Try a different name or specialty.' : 'Please check again after clinician credentials have been approved.'}</p></div> : <div className="grid max-h-56 gap-2 overflow-y-auto sm:grid-cols-2">{visibleDoctors.map((doctor) => <label key={doctor.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 ${selectedDoctorId === doctor.id ? 'border-teal-600 bg-teal-50/60' : 'border-slate-200 hover:bg-slate-50'}`}><input type="radio" name="clinician" value={doctor.id} checked={selectedDoctorId === doctor.id} onChange={() => setSelectedDoctorId(doctor.id)} className="h-4 w-4 shrink-0 accent-teal-700" /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-900">{doctor.name}</span><span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{doctor.specialty}</span></span></label>)}</div>}</fieldset>
+            <div className="grid gap-3 sm:grid-cols-3"><div><label htmlFor="visit-type" className="mb-2 block text-xs font-semibold text-slate-700">Visit type</label><select id="visit-type" value={visitType} onChange={(event) => setVisitType(event.target.value as Appointment['type'])} className={inputClass}><option>Video Call</option><option>In-Person Consultation</option><option>Routine Checkup</option></select></div><div><label htmlFor="visit-date" className="mb-2 block text-xs font-semibold text-slate-700">Preferred date</label><select id="visit-date" value={selectedDate} onChange={(event) => setDate(event.target.value)} className={inputClass}>{dates.map((value) => <option key={value} value={value}>{formatAppointmentDate(value)}</option>)}</select></div><div><label htmlFor="visit-time" className="mb-2 block text-xs font-semibold text-slate-700">Preferred time</label><select id="visit-time" value={time} onChange={(event) => setTime(event.target.value)} className={inputClass}>{TIME_SLOTS.map((value) => <option key={value}>{value}</option>)}</select></div></div>
+            <p className="text-[11px] text-slate-400">Times are shown in India Standard Time. Your care team can update the appointment if a different time is needed.</p>
+            <div><label htmlFor="visit-reason" className="mb-2 block text-xs font-semibold text-slate-700">What would you like help with? <span className="font-normal text-slate-400">(optional)</span></label><textarea id="visit-reason" value={symptoms} maxLength={2000} onChange={(event) => setSymptoms(event.target.value)} rows={3} placeholder="Share symptoms, questions, or the reason for your visit." className={inputClass} /></div>
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-5"><div><p className="text-xs text-slate-500">Consultation fee</p><p className="mt-1 text-lg font-semibold text-slate-900">₹500</p></div><button type="submit" disabled={!canContinue} className="care-button">{hasValidPatient ? 'Review appointment' : 'Sign in required'}<ArrowRight size={16} aria-hidden="true" /></button></div>
+          </form>}
+        </div>
       </div>
     </div>
   );

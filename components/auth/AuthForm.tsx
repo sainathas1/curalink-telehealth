@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, User } from 'firebase/auth';
+import { useState, useEffect } from 'react';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, signInWithCredential, GoogleAuthProvider, User } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Stethoscope, UserRound } from 'lucide-react';
 import { auth, db, googleProvider } from '../../lib/firebase';
@@ -79,15 +80,26 @@ export function AuthForm({ initialRole = 'Patient', onSuccess }: AuthFormProps) 
     finally { setBusy(false); }
   }
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        GoogleAuth.initialize();
+      } catch {
+        // Plugin initialization fallback
+      }
+    }
+  }, []);
+
   async function handleGoogle() {
     if (busy) return;
     setBusy(true); setError(null);
     try {
       if (Capacitor.isNativePlatform()) {
-        const msg = 'Native mobile Google Sign-In requires the @codetrix-studio/capacitor-google-auth plugin. Please use email and password to sign in on mobile devices.';
-        alert(msg);
-        setError(msg);
-        return;
+        const user = await GoogleAuth.signIn();
+        const idToken = user?.authentication?.idToken;
+        if (!idToken) throw new Error('Could not retrieve authentication token from Google Sign-In.');
+        const credential = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+        onSuccess(await loadOrCreateProfile(credential.user, true));
       } else {
         const credential = await signInWithPopup(auth, googleProvider);
         onSuccess(await loadOrCreateProfile(credential.user, true));

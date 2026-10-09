@@ -9,9 +9,11 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithCredential,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import {
   doc,
   setDoc,
@@ -106,6 +108,14 @@ export default function TelehealthRegistration() {
         setUserProfile(null);
       }
     });
+
+    if (typeof window !== 'undefined') {
+      try {
+        GoogleAuth.initialize();
+      } catch {
+        // Plugin initialization fallback
+      }
+    }
 
     return () => unsubscribe();
   }, []);
@@ -279,17 +289,18 @@ export default function TelehealthRegistration() {
     setIsLoading(true);
 
     try {
+      let user: FirebaseUser;
       if (Capacitor.isNativePlatform()) {
-        const msg = 'Native mobile Google Sign-In requires the @codetrix-studio/capacitor-google-auth plugin. Please use email and password to sign in on mobile devices.';
-        alert(msg);
-        setErrorMessage(msg);
-        setIsLoading(false);
-        return;
+        const gUser = await GoogleAuth.signIn();
+        const idToken = gUser?.authentication?.idToken;
+        if (!idToken) throw new Error('Could not retrieve authentication token from Google Sign-In.');
+        const credential = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+        user = credential.user;
+      } else {
+        const provider = new GoogleAuthProvider();
+        const result = await signInWithPopup(auth, provider);
+        user = result.user;
       }
-
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
 
       const userDocRef = doc(db, 'users', user.uid);
       const existingSnap = await getDoc(userDocRef);

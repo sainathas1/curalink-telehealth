@@ -97,11 +97,10 @@ export function ArchitectureFlow3D() {
             <button
               key={step.id}
               onClick={() => setActiveStep(step.id)}
-              className={`text-left p-6 rounded-3xl border transition-all duration-300 cursor-pointer relative overflow-hidden preserve-3d ${
-                isActive
+              className={`text-left p-6 rounded-3xl border transition-all duration-300 cursor-pointer relative overflow-hidden preserve-3d ${isActive
                   ? 'bg-slate-900 border-teal-400/60 shadow-2xl shadow-teal-500/20 -translate-y-2'
                   : 'bg-slate-950/60 border-white/10 hover:border-white/20 hover:-translate-y-1'
-              }`}
+                }`}
             >
               {isActive && (
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-400 to-emerald-400" />
@@ -112,11 +111,10 @@ export function ArchitectureFlow3D() {
                   {step.number}
                 </span>
                 <div
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-                    isActive
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isActive
                       ? 'bg-teal-500 text-slate-950'
                       : 'bg-white/5 text-slate-400'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-5 h-5" />
                 </div>

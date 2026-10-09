@@ -10,7 +10,10 @@ import {
   getDocs,
   onSnapshot,
   doc,
+  addDoc,
+  serverTimestamp,
 } from 'firebase/firestore';
+import { useTelehealth } from '../../context/TelehealthContext';
 import {
   Users,
   Search,
@@ -31,6 +34,7 @@ import {
   Calendar,
   Loader2,
   Download,
+  Edit3,
 } from 'lucide-react';
 
 interface PatientDirectoryProps {
@@ -52,6 +56,7 @@ export function PatientDirectory({
   onStartVideoCall,
   onOpenEHR,
 }: PatientDirectoryProps) {
+  const { currentUser } = useTelehealth();
   const [patientList, setPatientList] = useState<PatientDirectoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -60,6 +65,73 @@ export function PatientDirectory({
   const [liveIoTData, setLiveIoTData] = useState<LivePatientIoTData | null>(null);
   const [isLiveListening, setIsLiveListening] = useState(false);
   const [patientRecords, setPatientRecords] = useState<any[]>([]);
+
+  // Doctor Note state
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [notePatient, setNotePatient] = useState<{ id: string; name: string } | null>(null);
+  const [doctorNoteDiagnosis, setDoctorNoteDiagnosis] = useState('');
+  const [doctorNoteText, setDoctorNoteText] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [noteSuccess, setNoteSuccess] = useState(false);
+
+  // Actionable Feature: Add Doctor Note wired to addDoc
+  const handleSaveDoctorNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!notePatient || !doctorNoteText.trim()) return;
+
+    try {
+      setIsSavingNote(true);
+      const noteTitle = `Doctor Clinical Note - ${doctorNoteDiagnosis.trim() || 'General Evaluation'}`;
+      const doctorId = currentUser?.uid || 'doctor_attending';
+      const doctorName = currentUser?.fullName || 'Attending Physician';
+
+      // 1. Add to clinical_records collection
+      await addDoc(collection(db, 'clinical_records'), {
+        patientId: notePatient.id,
+        doctorId,
+        doctorName,
+        patientName: notePatient.name || 'Patient',
+        type: 'Clinical Note',
+        'Record Type': 'Clinical Note',
+        'Document Title': noteTitle,
+        title: noteTitle,
+        notes: doctorNoteText.trim(),
+        diagnosis: doctorNoteDiagnosis.trim() || 'General Telehealth Observation',
+        facility: 'CuraLink Clinical Suite',
+        createdAt: serverTimestamp(),
+      });
+
+      // 2. Add to medical_records collection
+      await addDoc(collection(db, 'medical_records'), {
+        patientId: notePatient.id,
+        doctorId,
+        doctorName,
+        patientName: notePatient.name || 'Patient',
+        type: 'Clinical Note',
+        content: {
+          title: noteTitle,
+          notes: doctorNoteText.trim(),
+          diagnosis: doctorNoteDiagnosis.trim() || 'General Telehealth Observation',
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          status: 'Finalized',
+        },
+        createdAt: serverTimestamp(),
+      });
+
+      setNoteSuccess(true);
+      setTimeout(() => {
+        setNoteSuccess(false);
+        setIsNoteModalOpen(false);
+        setDoctorNoteText('');
+        setDoctorNoteDiagnosis('');
+        setNotePatient(null);
+      }, 1000);
+    } catch (err) {
+      console.error('Error saving doctor clinical note:', err);
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
 
   // Direct Firestore query: collection 'users' where role is in ['patient', 'Patient']
   // Strictly without orderBy() to prevent missing index exceptions
@@ -538,11 +610,22 @@ export function PatientDirectory({
                             <ClipboardList className="w-4 h-4" />
                           </button>
 
+                          <button
+                            onClick={() => {
+                              setNotePatient({ id: pt.id, name: pt.name || 'Patient' });
+                              setIsNoteModalOpen(true);
+                            }}
+                            className="p-2 rounded-xl text-indigo-700 hover:bg-indigo-50 border border-indigo-200 transition-all cursor-pointer"
+                            title="Add Doctor Note"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+
                           {onOpenEHR && (
                             <button
                               onClick={() => onOpenEHR(pt.name || 'Patient', pt.id)}
                               className="p-2 rounded-xl text-slate-600 hover:text-teal-700 hover:bg-teal-50 border border-slate-200 transition-all cursor-pointer"
-                              title="Open EHR & Write Prescription"
+                              title="Write Prescription"
                             >
                               <FileText className="w-4 h-4" />
                             </button>
@@ -959,7 +1042,21 @@ export function PatientDirectory({
             </div>
 
             {/* Modal Actions */}
-            <div className="p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+            <div className="p-5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-end gap-2.5">
+              <button
+                onClick={() => {
+                  const ptName = selectedPatient.name || 'Patient';
+                  const ptId = selectedPatient.id;
+                  setNotePatient({ id: ptId, name: ptName });
+                  setIsNoteModalOpen(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Add Doctor Clinical Note"
+              >
+                <Edit3 className="w-4 h-4 text-indigo-600" />
+                <span>Add Doctor Note</span>
+              </button>
+
               {onOpenEHR && (
                 <button
                   onClick={() => {
@@ -969,9 +1066,10 @@ export function PatientDirectory({
                     onOpenEHR(ptName, ptId);
                   }}
                   className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Write Prescription"
                 >
                   <FileText className="w-4 h-4 text-teal-600" />
-                  <span>Issue Prescription</span>
+                  <span>Write Prescription</span>
                 </button>
               )}
 
@@ -989,6 +1087,114 @@ export function PatientDirectory({
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Actionable Feature: Add Doctor Note Modal */}
+      {isNoteModalOpen && notePatient && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150 overflow-y-auto"
+          onClick={() => {
+            if (!isSavingNote) {
+              setIsNoteModalOpen(false);
+              setNotePatient(null);
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 relative">
+              <button
+                onClick={() => {
+                  if (!isSavingNote) {
+                    setIsNoteModalOpen(false);
+                    setNotePatient(null);
+                  }
+                }}
+                className="absolute right-4 top-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+                  Clinician Record
+                </span>
+              </div>
+              <h3 className="text-xl font-black tracking-tight">Add Doctor Clinical Note</h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Document observation for <strong className="text-white">{notePatient.name}</strong>
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveDoctorNote} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Clinical Impression / Diagnosis
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Hypertension Review, Annual Clinical Check"
+                  value={doctorNoteDiagnosis}
+                  onChange={(e) => setDoctorNoteDiagnosis(e.target.value)}
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Doctor Observation & Clinical Notes *
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  placeholder="Enter clinical examination notes, observations, treatment plan, and follow-up guidance..."
+                  value={doctorNoteText}
+                  onChange={(e) => setDoctorNoteText(e.target.value)}
+                  className="w-full text-xs p-3.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
+                />
+              </div>
+
+              {noteSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Clinical note saved to patient records in Firestore!</span>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  disabled={isSavingNote}
+                  onClick={() => {
+                    setIsNoteModalOpen(false);
+                    setNotePatient(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingNote || !doctorNoteText.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingNote ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Saving to Firestore...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Edit3 className="w-4 h-4" />
+                      <span>Save Doctor Note</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

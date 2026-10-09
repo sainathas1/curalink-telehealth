@@ -20,9 +20,7 @@ export default function DoctorEHRRoute() {
         </div>
         <button
           onClick={() => openEHR('')}
-          disabled={!currentUser?.uid}
-          title={!currentUser?.uid ? 'Physician sign in required to write prescriptions' : ''}
-          className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer"
+          className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer"
         >
           + Write New Prescription
         </button>

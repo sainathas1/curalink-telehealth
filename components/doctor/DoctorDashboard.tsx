@@ -10,7 +10,17 @@ import {
 } from '../../lib/types';
 import { DoctorTab } from '../navbar/Sidebar';
 import { db } from '../../lib/firebase';
-import { collection, query, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  doc,
+  getDoc,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
 import { useTelehealth } from '../../context/TelehealthContext';
 import {
   Video,
@@ -33,6 +43,8 @@ import {
   FileText,
   ClipboardList,
   Download,
+  Loader2,
+  Edit3,
 } from 'lucide-react';
 
 interface DoctorDashboardProps {
@@ -67,23 +79,36 @@ export function DoctorDashboard({
   const [liveIoTData, setLiveIoTData] = useState<LivePatientIoTData | null>(null);
   const [isLiveListening, setIsLiveListening] = useState(false);
   const [liveAppointments, setLiveAppointments] = useState<Appointment[]>([]);
+  const [isAppointmentsLoading, setIsAppointmentsLoading] = useState(true);
+  const [updatingAptId, setUpdatingAptId] = useState<string | null>(null);
   const [patientProfiles, setPatientProfiles] = useState<Record<string, any>>({});
   const [hasFetchedLiveApts, setHasFetchedLiveApts] = useState(false);
   const [patientRecords, setPatientRecords] = useState<any[]>([]);
 
-  // Doctor Read Fix:
-  // Fetch appointments using ONLY this simple query: query(collection(db, 'appointments'), where('doctorId', '==', currentUser.uid))
-  // CRITICAL: Do NOT use orderBy() in this Firestore query to prevent composite index errors.
-  // Sort the appointments by date in the frontend JavaScript (.sort()) instead.
-  useEffect(() => {
-    const doctorUid = currentUser?.uid || doctor?.uid;
-    if (!doctorUid) return;
+  // Direct Firestore query for patient directory: users collection where role == 'patient'
+  const [firestorePatients, setFirestorePatients] = useState<PatientDirectoryItem[]>([]);
+  const [isPatientsLoading, setIsPatientsLoading] = useState(true);
 
+  // Real-time Firestore query for clinical_records across all patients
+  const [allClinicalRecords, setAllClinicalRecords] = useState<any[]>([]);
+  const [isRecordsLoading, setIsRecordsLoading] = useState(true);
+
+  // Doctor Note composer state
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [notePatient, setNotePatient] = useState<{ id: string; name: string } | null>(null);
+  const [doctorNoteDiagnosis, setDoctorNoteDiagnosis] = useState('');
+  const [doctorNoteText, setDoctorNoteText] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [noteSuccess, setNoteSuccess] = useState(false);
+
+  // 1. Appointments Query: Query real patient appointments from appointments collection
+  // Wrapped in useEffect with proper loading state and safe client-side sorting
+  // CRITICAL: Do NOT use orderBy() in Firestore query to avoid index exceptions; sort client-side in JS
+  useEffect(() => {
+    let isMounted = true;
     try {
-      const q = query(
-        collection(db, 'appointments'),
-        where('doctorId', '==', doctorUid)
-      );
+      setIsAppointmentsLoading(true);
+      const q = query(collection(db, 'appointments'));
 
       const unsubscribe = onSnapshot(
         q,
@@ -94,25 +119,27 @@ export function DoctorDashboard({
           });
 
           // Mandatory console.log as required by user prompt
-          console.log("Fetched Appointments:", data);
+          console.log('Fetched Appointments:', data);
 
           // Frontend JavaScript sort by date/time
           data.sort((a, b) => {
-            const timeA = new Date(`${a.date || ''} ${a.time?.split(' - ')[0] || ''}`).getTime();
-            const timeB = new Date(`${b.date || ''} ${b.time?.split(' - ')[0] || ''}`).getTime();
+            const timeA = new Date(`${a?.date || ''} ${a?.time?.split(' - ')[0] || ''}`).getTime();
+            const timeB = new Date(`${b?.date || ''} ${b?.time?.split(' - ')[0] || ''}`).getTime();
             if (!isNaN(timeA) && !isNaN(timeB)) {
               return timeA - timeB;
             }
-            return (b.id || '').localeCompare(a.id || '');
+            return (b?.id || '').localeCompare(a?.id || '');
           });
 
-          setLiveAppointments(data);
-          setHasFetchedLiveApts(true);
+          if (isMounted) {
+            setLiveAppointments(data);
+            setHasFetchedLiveApts(true);
+            setIsAppointmentsLoading(false);
+          }
 
-          // Doctor Portal Patient Fetching:
-          // Use Promise.all to fetch getDoc(doc(db, 'users', appointment.patientId)) for each unique patient
+          // Fetch patient user documents via Promise.all for unique patientIds
           const uniquePatientIds = Array.from(
-            new Set(data.map((apt) => apt.patientId).filter(Boolean))
+            new Set((data || []).map((apt) => apt?.patientId).filter(Boolean))
           );
 
           if (uniquePatientIds.length > 0) {
@@ -126,7 +153,9 @@ export function DoctorDashboard({
                   profiles[pDoc.id] = pDoc.data();
                 }
               });
-              setPatientProfiles((prev) => ({ ...prev, ...profiles }));
+              if (isMounted) {
+                setPatientProfiles((prev) => ({ ...prev, ...profiles }));
+              }
             } catch (pErr) {
               console.warn('Error fetching patient user documents via Promise.all:', pErr);
             }
@@ -134,14 +163,233 @@ export function DoctorDashboard({
         },
         (error) => {
           console.warn('Doctor appointments query onSnapshot notice:', error);
+          if (isMounted) setIsAppointmentsLoading(false);
         }
       );
 
-      return () => unsubscribe();
+      return () => {
+        isMounted = false;
+        unsubscribe();
+      };
     } catch (err) {
       console.warn('Error setting up doctor appointments query:', err);
+      if (isMounted) setIsAppointmentsLoading(false);
     }
-  }, [currentUser?.uid, doctor?.uid]);
+  }, []);
+
+  // 2. Patient Directory Query: Fetch documents from users collection where role == 'patient'
+  // Wrapped in useEffect with proper loading state and safe mapping
+  useEffect(() => {
+    let isMounted = true;
+    try {
+      setIsPatientsLoading(true);
+      const q = query(
+        collection(db, 'users'),
+        where('role', 'in', ['patient', 'Patient'])
+      );
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const list: PatientDirectoryItem[] = (snapshot.docs || []).map((docSnap) => {
+            const data = docSnap.data() || {};
+            return {
+              id: docSnap.id,
+              name: data.fullName || data.name || 'Patient',
+              email: data.email || '',
+              phone: data.phoneNumber || data.phone || '',
+              phoneNumber: data.phoneNumber || data.phone || '',
+              lastVisit: data.lastVisit || data.lastVisitDate || 'Initial Intake',
+              lastVisitDate: data.lastVisitDate || data.lastVisit || '',
+              age: data.age || 35,
+              gender: data.gender || 'Other',
+              condition: data.condition || 'General Care',
+              status: data.status || 'Stable',
+              roomOrBed: data.roomOrBed || 'Remote Care',
+              assignedDoctor: data.assignedDoctor || doctor?.fullName || 'Attending Clinician',
+              nextAppointment: data.nextAppointment,
+              bloodGroup: data.bloodGroup || data.bloodType || '',
+              bloodType: data.bloodType || data.bloodGroup || '',
+              allergies: data.allergies || [],
+              knownAllergies: data.knownAllergies || '',
+              chronicConditions: data.chronicConditions || [],
+              currentMedications: data.currentMedications || '',
+              hasCompletedOnboarding: data.hasCompletedOnboarding === true,
+              emergencyContact: data.emergencyContact || '',
+              lastSyncedTemperature: data.lastSyncedTemperature,
+              lastSyncedAt: data.lastSyncedAt,
+              temperatureStatus: data.temperatureStatus,
+              deviceModel: data.deviceModel,
+              currentVitals: data.currentVitals || {
+                heartRate: 72,
+                spo2: 98,
+                temperature: data.lastSyncedTemperature || 37.0,
+                bloodPressure: '120/80',
+              },
+            };
+          });
+
+          // Client-side sort alphabetically (.sort())
+          list.sort((a, b) => (a?.name || '').localeCompare(b?.name || ''));
+
+          if (isMounted) {
+            setFirestorePatients(list);
+            setIsPatientsLoading(false);
+          }
+        },
+        (error) => {
+          console.error('Doctor Dashboard Patients query error:', error);
+          if (isMounted) setIsPatientsLoading(false);
+        }
+      );
+
+      return () => {
+        isMounted = false;
+        unsubscribe();
+      };
+    } catch (err) {
+      console.error('Error setting up doctor dashboard patients query:', err);
+      if (isMounted) setIsPatientsLoading(false);
+    }
+  }, [doctor?.fullName]);
+
+  // 3. Clinical Records Query: Real-time query to pull in real data generated by patients
+  // Wrapped in useEffect with proper loading state
+  useEffect(() => {
+    let isMounted = true;
+    try {
+      setIsRecordsLoading(true);
+      const q = query(collection(db, 'clinical_records'));
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const list: any[] = (snapshot.docs || []).map((docSnap) => {
+            const data = docSnap.data() || {};
+            return {
+              id: docSnap.id,
+              patientId: data.patientId || '',
+              patientName: data.patientName || 'Patient',
+              title: data['Document Title'] || data.documentTitle || data.title || 'Clinical Document',
+              type: data['Record Type'] || data.recordType || data.type || 'Lab Report',
+              notes: data.notes || data['Notes'] || data.clinicalSummary || '',
+              facility: data.facility || data['Facility'] || 'CuraLink Diagnostics',
+              date: data.createdAt?.toDate
+                ? data.createdAt.toDate().toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })
+                : 'Recent',
+              fileData: data.fileData || data.downloadUrl,
+              createdAt: data.createdAt,
+            };
+          });
+
+          // Client-side sort descending by timestamp
+          list.sort((a, b) => {
+            const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+            const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+            return timeB - timeA;
+          });
+
+          if (isMounted) {
+            setAllClinicalRecords(list);
+            setIsRecordsLoading(false);
+          }
+        },
+        (error) => {
+          console.warn('Dashboard clinical_records query error:', error);
+          if (isMounted) setIsRecordsLoading(false);
+        }
+      );
+
+      return () => {
+        isMounted = false;
+        unsubscribe();
+      };
+    } catch (err) {
+      console.warn('Error setting up dashboard clinical_records query:', err);
+      if (isMounted) setIsRecordsLoading(false);
+    }
+  }, []);
+
+  // Actionable Feature: Update Appointment Status wired to updateDoc
+  const handleUpdateAppointmentStatus = async (aptId: string, newStatus: string) => {
+    try {
+      setUpdatingAptId(aptId);
+      await updateDoc(doc(db, 'appointments', aptId), {
+        status: newStatus,
+        updatedAt: serverTimestamp(),
+      });
+      setLiveAppointments((prev) =>
+        (prev || []).map((apt) => (apt?.id === aptId ? { ...apt, status: newStatus } : apt))
+      );
+    } catch (err) {
+      console.error('Error updating appointment status:', err);
+    } finally {
+      setUpdatingAptId(null);
+    }
+  };
+
+  // Actionable Feature: Add Doctor Note wired to addDoc
+  const handleSaveDoctorNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!notePatient || !doctorNoteText.trim()) return;
+
+    try {
+      setIsSavingNote(true);
+      const noteTitle = `Doctor Clinical Note - ${doctorNoteDiagnosis.trim() || 'General Evaluation'}`;
+      const doctorId = currentUser?.uid || doctor?.uid || 'doctor_attending';
+      const doctorName = currentUser?.fullName || doctor?.fullName || 'Attending Physician';
+
+      // 1. Add to clinical_records collection
+      await addDoc(collection(db, 'clinical_records'), {
+        patientId: notePatient.id,
+        doctorId,
+        doctorName,
+        patientName: notePatient.name || 'Patient',
+        type: 'Clinical Note',
+        'Record Type': 'Clinical Note',
+        'Document Title': noteTitle,
+        title: noteTitle,
+        notes: doctorNoteText.trim(),
+        diagnosis: doctorNoteDiagnosis.trim() || 'General Telehealth Observation',
+        facility: 'CuraLink Clinical Suite',
+        createdAt: serverTimestamp(),
+      });
+
+      // 2. Add to medical_records collection
+      await addDoc(collection(db, 'medical_records'), {
+        patientId: notePatient.id,
+        doctorId,
+        doctorName,
+        patientName: notePatient.name || 'Patient',
+        type: 'Clinical Note',
+        content: {
+          title: noteTitle,
+          notes: doctorNoteText.trim(),
+          diagnosis: doctorNoteDiagnosis.trim() || 'General Telehealth Observation',
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          status: 'Finalized',
+        },
+        createdAt: serverTimestamp(),
+      });
+
+      setNoteSuccess(true);
+      setTimeout(() => {
+        setNoteSuccess(false);
+        setIsNoteModalOpen(false);
+        setDoctorNoteText('');
+        setDoctorNoteDiagnosis('');
+        setNotePatient(null);
+      }, 1000);
+    } catch (err) {
+      console.error('Error saving doctor clinical note:', err);
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
 
   // Fetch full medical history when selectedPatient opens if not already cached
   useEffect(() => {
@@ -311,31 +559,32 @@ export function DoctorDashboard({
     ? liveAppointments
     : (appointmentsQueue && appointmentsQueue.length > 0 ? appointmentsQueue : liveAppointments);
   const nextVisit = displayedAppointments[0];
-  const criticalCount = patients.filter((p) => p.status === 'Critical').length;
+  const activePatientsDirectory = firestorePatients.length > 0 ? firestorePatients : (patients || []);
+  const criticalCount = (activePatientsDirectory || []).filter((p) => p?.status === 'Critical').length;
 
-  // Build a unique patients roster from appointments + assigned directory
+  // Build a unique patients roster from appointments + active patients directory
   const uniquePatientsList: PatientDirectoryItem[] = React.useMemo(() => {
     const list: PatientDirectoryItem[] = [];
     const seenIds = new Set<string>();
 
     // 1. From appointments with denormalized & fetched profile data
-    displayedAppointments.forEach((apt) => {
-      const pid = apt.patientId || `apt_pt_${apt.patientName}`;
+    (displayedAppointments || []).forEach((apt) => {
+      const pid = apt?.patientId || `apt_pt_${apt?.patientName}`;
       if (seenIds.has(pid)) return;
       seenIds.add(pid);
 
-      const profile = patientProfiles[apt.patientId] || {};
-      const matched = patients.find((p) => p.id === apt.patientId || p.name.toLowerCase() === apt.patientName.toLowerCase());
+      const profile = patientProfiles[apt?.patientId] || {};
+      const matched = (activePatientsDirectory || []).find((p) => p?.id === apt?.patientId || p?.name?.toLowerCase() === apt?.patientName?.toLowerCase());
 
-      const bloodGroupRaw = apt.bloodGroup || profile.bloodGroup || profile.bloodType || matched?.bloodGroup;
+      const bloodGroupRaw = apt?.bloodGroup || profile.bloodGroup || profile.bloodType || matched?.bloodGroup;
       const bloodGroup = (bloodGroupRaw && bloodGroupRaw !== 'Not specified') ? bloodGroupRaw : 'No data provided';
 
-      const rawAllergies = apt.knownAllergies || profile.knownAllergies || (profile.allergies ? profile.allergies.join(', ') : matched?.knownAllergies);
+      const rawAllergies = apt?.knownAllergies || profile.knownAllergies || (profile.allergies ? profile.allergies.join(', ') : matched?.knownAllergies);
       const allergies = (rawAllergies && rawAllergies.trim().length > 0 && rawAllergies.toLowerCase() !== 'none' && rawAllergies.toLowerCase() !== 'none reported')
         ? rawAllergies
         : 'No data provided';
 
-      const rawChronic = (apt.chronicConditions && apt.chronicConditions.length > 0 && apt.chronicConditions[0] !== 'None')
+      const rawChronic = (apt?.chronicConditions && apt.chronicConditions.length > 0 && apt.chronicConditions[0] !== 'None')
         ? apt.chronicConditions
         : (profile.chronicConditions && profile.chronicConditions.length > 0 && profile.chronicConditions[0] !== 'None')
           ? profile.chronicConditions
@@ -344,22 +593,22 @@ export function DoctorDashboard({
             : [];
       const chronic = rawChronic.length > 0 ? rawChronic : ['No data provided'];
 
-      const currentMedications = apt.currentMedications || profile.currentMedications || matched?.currentMedications || 'No data provided';
-      const patientEmail = apt.patientEmail || profile.email || matched?.email || 'No data provided';
-      const patientPhone = apt.patientPhone || profile.phoneNumber || matched?.phoneNumber || 'No data provided';
-      const emergencyContact = apt.emergencyContact || profile.emergencyContact || matched?.emergencyContact || 'No data provided';
+      const currentMedications = apt?.currentMedications || profile.currentMedications || matched?.currentMedications || 'No data provided';
+      const patientEmail = apt?.patientEmail || profile.email || matched?.email || 'No data provided';
+      const patientPhone = apt?.patientPhone || profile.phoneNumber || matched?.phoneNumber || 'No data provided';
+      const emergencyContact = apt?.emergencyContact || profile.emergencyContact || matched?.emergencyContact || 'No data provided';
 
       list.push({
-        id: apt.patientId,
-        name: apt.patientName,
+        id: apt?.patientId,
+        name: apt?.patientName,
         age: profile.age || matched?.age || 35,
         gender: profile.gender || matched?.gender || 'Other',
-        condition: apt.symptoms || profile.condition || matched?.condition || 'No data provided',
+        condition: apt?.symptoms || profile.condition || matched?.condition || 'No data provided',
         status: matched?.status || 'Stable',
         roomOrBed: profile.roomOrBed || matched?.roomOrBed || 'Remote Telehealth',
-        assignedDoctor: doctor.fullName || 'Attending Clinician',
-        lastVisit: apt.date || matched?.lastVisit || 'Initial Intake',
-        nextAppointment: apt.time || matched?.nextAppointment,
+        assignedDoctor: doctor?.fullName || 'Attending Clinician',
+        lastVisit: apt?.date || matched?.lastVisit || 'Initial Intake',
+        nextAppointment: apt?.time || matched?.nextAppointment,
         bloodGroup,
         bloodType: bloodGroup,
         allergies: allergies !== 'No data provided' ? [allergies] : [],
@@ -384,20 +633,20 @@ export function DoctorDashboard({
     });
 
     // 2. Also append any patients from directory not yet in the list
-    patients.forEach((p) => {
-      if (seenIds.has(p.id)) return;
-      seenIds.add(p.id);
+    (activePatientsDirectory || []).forEach((p) => {
+      if (seenIds.has(p?.id)) return;
+      seenIds.add(p?.id);
 
-      const profile = patientProfiles[p.id] || {};
-      const bloodGroupRaw = p.bloodGroup || profile.bloodGroup || profile.bloodType;
+      const profile = patientProfiles[p?.id] || {};
+      const bloodGroupRaw = p?.bloodGroup || profile.bloodGroup || profile.bloodType;
       const bloodGroup = (bloodGroupRaw && bloodGroupRaw !== 'Not specified') ? bloodGroupRaw : 'No data provided';
 
-      const rawAllergies = p.knownAllergies || profile.knownAllergies || (profile.allergies ? profile.allergies.join(', ') : undefined);
+      const rawAllergies = p?.knownAllergies || profile.knownAllergies || (profile.allergies ? profile.allergies.join(', ') : undefined);
       const allergies = (rawAllergies && rawAllergies.trim().length > 0 && rawAllergies.toLowerCase() !== 'none' && rawAllergies.toLowerCase() !== 'none reported')
         ? rawAllergies
         : 'No data provided';
 
-      const rawChronic = (p.chronicConditions && p.chronicConditions.length > 0 && p.chronicConditions[0] !== 'None')
+      const rawChronic = (p?.chronicConditions && p.chronicConditions.length > 0 && p.chronicConditions[0] !== 'None')
         ? p.chronicConditions
         : (profile.chronicConditions && profile.chronicConditions.length > 0 && profile.chronicConditions[0] !== 'None')
           ? profile.chronicConditions
@@ -410,15 +659,15 @@ export function DoctorDashboard({
         bloodType: bloodGroup,
         knownAllergies: allergies,
         chronicConditions: chronic,
-        currentMedications: p.currentMedications || profile.currentMedications || 'No data provided',
-        email: p.email || profile.email || 'No data provided',
-        phoneNumber: p.phoneNumber || profile.phoneNumber || 'No data provided',
-        emergencyContact: p.emergencyContact || profile.emergencyContact || 'No data provided',
+        currentMedications: p?.currentMedications || profile.currentMedications || 'No data provided',
+        email: p?.email || profile.email || 'No data provided',
+        phoneNumber: p?.phoneNumber || profile.phoneNumber || 'No data provided',
+        emergencyContact: p?.emergencyContact || profile.emergencyContact || 'No data provided',
       });
     });
 
     return list;
-  }, [displayedAppointments, patients, patientProfiles, doctor?.fullName]);
+  }, [displayedAppointments, activePatientsDirectory, patientProfiles, doctor?.fullName]);
 
   return (
     <div className="space-y-6">
@@ -493,7 +742,7 @@ export function DoctorDashboard({
               </span>
               <span className="text-xs text-slate-300 flex items-center gap-1 font-mono">
                 <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
-                {doctor.licenseNumber || 'Verified MD'}
+                {doctor?.licenseNumber || 'Verified MD'}
               </span>
             </div>
 
@@ -501,7 +750,7 @@ export function DoctorDashboard({
               {doctor?.fullName || 'Dr. Clinician'}
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl">
-              {doctor?.specialty || 'General Tele-Medicine'} • CuraLink Telehealth Network. {patients.length > 0 ? `${patients.length} remote patient stream${patients.length === 1 ? '' : 's'} reporting telemetry.` : 'No remote patient telemetry streams active.'}
+              {doctor?.specialty || 'General Tele-Medicine'} • CuraLink Telehealth Network. {activePatientsDirectory.length > 0 ? `${activePatientsDirectory.length} registered patient stream${activePatientsDirectory.length === 1 ? '' : 's'} reporting.` : 'No patient telemetry streams active.'}
             </p>
           </div>
 
@@ -519,7 +768,21 @@ export function DoctorDashboard({
               className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
             >
               <FilePlus className="w-4 h-4 text-teal-300" />
-              <span>Issue Digital Rx</span>
+              <span>Write Prescription</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setNotePatient({
+                  id: nextVisit?.patientId || activePatientsDirectory[0]?.id || '',
+                  name: nextVisit?.patientName || activePatientsDirectory[0]?.name || 'Patient',
+                });
+                setIsNoteModalOpen(true);
+              }}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 text-white font-bold text-xs border border-indigo-400/40 transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-indigo-950/40"
+            >
+              <Edit3 className="w-4 h-4 text-indigo-200" />
+              <span>Add Doctor Note</span>
             </button>
           </div>
         </div>
@@ -539,11 +802,15 @@ export function DoctorDashboard({
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-slate-900 font-mono">
-              {displayedAppointments.length}
+              {isAppointmentsLoading ? (
+                <Loader2 className="w-6 h-6 animate-spin text-teal-600 inline" />
+              ) : (
+                displayedAppointments.length
+              )}
             </span>
             <span className="text-xs text-slate-500 font-medium">Scheduled</span>
           </div>
-          <p className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-teal-700 font-semibold">
+          <p className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-teal-700 font-semibold truncate">
             Next: {nextVisit ? `${nextVisit.patientName} (${nextVisit.time})` : 'No upcoming appointments'}
           </p>
         </div>
@@ -578,11 +845,11 @@ export function DoctorDashboard({
           </p>
         </div>
 
-        {/* Card 3: Active IoT Streams */}
+        {/* Card 3: Active Patient Roster */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Monitored Patients
+              Patient Directory
             </span>
             <div className="w-8 h-8 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center">
               <Users className="w-4 h-4" />
@@ -590,32 +857,42 @@ export function DoctorDashboard({
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-slate-900 font-mono">
-              {patients.length}
+              {isPatientsLoading ? (
+                <Loader2 className="w-6 h-6 animate-spin text-cyan-600 inline" />
+              ) : (
+                activePatientsDirectory.length
+              )}
             </span>
-            <span className="text-xs text-slate-500 font-medium">Wearable Nodes</span>
+            <span className="text-xs text-slate-500 font-medium">Registered Patients</span>
           </div>
           <p className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>{patients.length > 0 ? 'Real-Time Telemetry Live' : 'Awaiting sensor connect'}</span>
+            <span>{activePatientsDirectory.length > 0 ? 'Live Firestore Database' : 'Awaiting patient signups'}</span>
           </p>
         </div>
 
-        {/* Card 4: Prescription Compliance */}
+        {/* Card 4: Clinical Records Vault */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Clinical Queue
+              Clinical Records
             </span>
             <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
               <Stethoscope className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 font-mono">{displayedAppointments.length}</span>
-            <span className="text-xs text-slate-500 font-medium">Pending EHR Notes</span>
+            <span className="text-3xl font-black text-slate-900 font-mono">
+              {isRecordsLoading ? (
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-600 inline" />
+              ) : (
+                allClinicalRecords.length
+              )}
+            </span>
+            <span className="text-xs text-slate-500 font-medium">Diagnostic Files</span>
           </div>
           <p className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500 font-mono">
-            Digital Rx Ready
+            {allClinicalRecords.length > 0 ? 'Patient Uploads Live' : 'No records yet'}
           </p>
         </div>
       </div>
@@ -746,37 +1023,57 @@ export function DoctorDashboard({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
-                  <div className="text-left sm:text-right">
-                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+                  <div className="text-left sm:text-right space-y-1">
+                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1 sm:justify-end">
                       <Clock className="w-3.5 h-3.5 text-teal-600" />
-                      <span>{apt.time}</span>
+                      <span>{apt?.time || 'Consultation Slot'}</span>
                     </p>
-                    <p className="text-[10px] text-slate-400 font-mono">{apt.date}</p>
+                    <p className="text-[10px] text-slate-400 font-mono">{apt?.date}</p>
+
+                    {/* Interactive Appointment Status Updater */}
+                    <div className="flex items-center gap-1.5 sm:justify-end">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Status:</span>
+                      <select
+                        value={apt?.status || 'scheduled'}
+                        disabled={updatingAptId === apt?.id}
+                        onChange={(e) => handleUpdateAppointmentStatus(apt?.id, e.target.value)}
+                        className="text-[11px] font-bold rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-slate-700 hover:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-500 cursor-pointer disabled:opacity-50"
+                        title="Update Appointment Status"
+                      >
+                        <option value="scheduled">Scheduled</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                      {updatingAptId === apt?.id && (
+                        <Loader2 className="w-3 h-3 animate-spin text-teal-600" />
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => {
                         const targetPt: PatientDirectoryItem = matchedPt || {
-                          id: apt.patientId,
-                          name: apt.patientName,
+                          id: apt?.patientId,
+                          name: apt?.patientName,
                           age: profile.age || 35,
                           gender: profile.gender || 'Other',
                           condition: chiefSymptoms,
                           status: 'Stable',
                           roomOrBed: profile.roomOrBed || 'Remote Telehealth',
-                          assignedDoctor: doctor.fullName || 'Attending Clinician',
-                          lastVisit: apt.date,
-                          nextAppointment: apt.time,
+                          assignedDoctor: doctor?.fullName || 'Attending Clinician',
+                          lastVisit: apt?.date || 'Today',
+                          nextAppointment: apt?.time,
                           bloodGroup,
                           bloodType: bloodGroup,
                           knownAllergies: allergies,
                           chronicConditions: chronic,
-                          currentMedications: apt.currentMedications || profile.currentMedications || 'No data provided',
+                          currentMedications: apt?.currentMedications || profile.currentMedications || 'No data provided',
                           email: patientEmail,
                           phoneNumber: patientPhone,
-                          emergencyContact: apt.emergencyContact || profile.emergencyContact || 'No data provided',
+                          emergencyContact: apt?.emergencyContact || profile.emergencyContact || 'No data provided',
                           hasCompletedOnboarding: profile.hasCompletedOnboarding ?? false,
                           lastSyncedTemperature: profile.lastSyncedTemperature,
                           lastSyncedAt: profile.lastSyncedAt,
@@ -798,15 +1095,26 @@ export function DoctorDashboard({
                     </button>
 
                     <button
-                      onClick={() => onOpenEHR(apt.patientName)}
-                      className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-all cursor-pointer"
-                      title="Open EHR"
+                      onClick={() => {
+                        setNotePatient({ id: apt?.patientId || '', name: apt?.patientName || 'Patient' });
+                        setIsNoteModalOpen(true);
+                      }}
+                      className="p-2 rounded-xl border border-indigo-200 hover:bg-indigo-50 text-indigo-700 transition-all cursor-pointer"
+                      title="Add Doctor Note"
                     >
-                      <Stethoscope className="w-4 h-4" />
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => onOpenEHR(apt?.patientName || '', apt?.patientId)}
+                      className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-all cursor-pointer"
+                      title="Write Prescription"
+                    >
+                      <FileText className="w-4 h-4" />
                     </button>
 
                     <Link
-                      href={`/call/${apt.id}`}
+                      href={`/call/${apt?.id}`}
                       onClick={() => onStartVideoCall(apt)}
                       className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all cursor-pointer flex items-center gap-2"
                     >
@@ -930,9 +1238,21 @@ export function DoctorDashboard({
                       </button>
 
                       <button
+                        onClick={() => {
+                          setNotePatient({ id: pt?.id, name: pt?.name || 'Patient' });
+                          setIsNoteModalOpen(true);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg border border-indigo-200 hover:bg-indigo-50 text-indigo-700 font-semibold text-[11px] transition-all flex items-center gap-1 cursor-pointer"
+                        title="Add Doctor Note"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Note</span>
+                      </button>
+
+                      <button
                         onClick={() => onOpenEHR(pt.name, pt.id)}
                         className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold text-[11px] transition-all flex items-center gap-1 cursor-pointer"
-                        title="Open EHR & Digital Rx"
+                        title="Write Prescription"
                       >
                         <FileText className="w-3.5 h-3.5 text-teal-600" />
                         <span>Rx</span>
@@ -1287,7 +1607,20 @@ export function DoctorDashboard({
             </div>
 
             {/* Modal Actions */}
-            <div className="p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+            <div className="p-5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-end gap-2.5">
+              <button
+                onClick={() => {
+                  const pt = selectedPatient;
+                  setNotePatient({ id: pt.id, name: pt.name });
+                  setIsNoteModalOpen(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Add Doctor Clinical Note"
+              >
+                <Edit3 className="w-4 h-4 text-indigo-600" />
+                <span>Add Doctor Note</span>
+              </button>
+
               <button
                 onClick={() => {
                   const ptName = selectedPatient.name;
@@ -1296,9 +1629,10 @@ export function DoctorDashboard({
                   onOpenEHR(ptName, ptId);
                 }}
                 className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Write Prescription"
               >
                 <FileText className="w-4 h-4 text-teal-600" />
-                <span>Issue Prescription</span>
+                <span>Write Prescription</span>
               </button>
 
               <button
@@ -1333,6 +1667,114 @@ export function DoctorDashboard({
                 <span>Video Consult</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Actionable Feature: Add Doctor Note Modal */}
+      {isNoteModalOpen && notePatient && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150 overflow-y-auto"
+          onClick={() => {
+            if (!isSavingNote) {
+              setIsNoteModalOpen(false);
+              setNotePatient(null);
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 relative">
+              <button
+                onClick={() => {
+                  if (!isSavingNote) {
+                    setIsNoteModalOpen(false);
+                    setNotePatient(null);
+                  }
+                }}
+                className="absolute right-4 top-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+                  Clinician Record
+                </span>
+              </div>
+              <h3 className="text-xl font-black tracking-tight">Add Doctor Clinical Note</h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Document observation for <strong className="text-white">{notePatient.name}</strong>
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveDoctorNote} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Clinical Impression / Diagnosis
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Acute Upper Respiratory Infection, Mild Hypertension"
+                  value={doctorNoteDiagnosis}
+                  onChange={(e) => setDoctorNoteDiagnosis(e.target.value)}
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Doctor Observation & Clinical Notes *
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  placeholder="Enter clinical examination notes, observations, treatment plan, and follow-up guidance..."
+                  value={doctorNoteText}
+                  onChange={(e) => setDoctorNoteText(e.target.value)}
+                  className="w-full text-xs p-3.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
+                />
+              </div>
+
+              {noteSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Clinical note saved to patient records in Firestore!</span>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  disabled={isSavingNote}
+                  onClick={() => {
+                    setIsNoteModalOpen(false);
+                    setNotePatient(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingNote || !doctorNoteText.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingNote ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Saving to Firestore...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Edit3 className="w-4 h-4" />
+                      <span>Save Doctor Note</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

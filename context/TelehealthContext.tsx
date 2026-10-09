@@ -199,7 +199,7 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
     try {
       // 1. medical_records Listener (Strict real-time sync with onSnapshot)
       const medRecordsQuery = isDoctor
-        ? query(collection(db, 'medical_records'), where('doctorId', '==', currentUid))
+        ? query(collection(db, 'medical_records'))
         : query(collection(db, 'medical_records'), where('patientId', '==', currentUid));
 
       const unsubMedRecords = onSnapshot(
@@ -270,7 +270,7 @@ export function TelehealthProvider({ children }: { children: ReactNode }) {
 
       // 2. clinical_records Listener (Legacy fallback merged seamlessly)
       const clinicalQuery = isDoctor
-        ? query(collection(db, 'clinical_records'), where('doctorId', '==', currentUid))
+        ? query(collection(db, 'clinical_records'))
         : query(collection(db, 'clinical_records'), where('patientId', '==', currentUid));
 
       const unsubClinical = onSnapshot(

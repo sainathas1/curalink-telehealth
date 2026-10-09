@@ -137,7 +137,6 @@ function ScopedTelehealthProvider({ children, authState }: { children: ReactNode
     const recordMaps = new Map<string, StoredRecord[]>();
     const vitalMaps = new Map<string, VitalRecord[]>();
     const messageMaps = new Map<string, ConsultationMessage[]>();
-    const assigned = new Map<string, Record<string, any>>();
     const patients = new Map<string, Record<string, any>>();
     const telemetry = new Map<string, Record<string, any>>();
     let relatedIds = new Set<string>();
@@ -198,10 +197,15 @@ function ScopedTelehealthProvider({ children, authState }: { children: ReactNode
     };
     const refreshPatientRecordScope = () => replaceRecordScope(Array.from(patients.keys()).filter(id => relatedIds.has(id)));
     const refreshRelations = () => {
-      const bookedIds = local.doctorAppointmentsQueue.filter(appointment => appointment.status.toLowerCase() !== 'cancelled').map(appointment => appointment.patientId).filter(safeId);
-      relatedIds = new Set([...patients.keys(), ...assigned.keys(), ...bookedIds]);
-      for (const id of patients.keys()) if (!relatedIds.has(id)) { patients.delete(id); telemetry.delete(id); }
-      for (const key of [...stops.keys()]) {
+      const bookedIds = Array.from(new Set(
+        local.doctorAppointmentsQueue
+          .filter(appointment => appointment.status.toLowerCase() !== 'cancelled')
+          .map(appointment => appointment.patientId)
+          .filter(safeId)
+      ));
+      relatedIds = new Set(bookedIds);
+      for (const id of Array.from(patients.keys())) if (!relatedIds.has(id)) { patients.delete(id); telemetry.delete(id); }
+      for (const key of Array.from(stops.keys())) {
         if ((key.startsWith('patient/') || key.startsWith('telemetry/')) && !relatedIds.has(key.split('/')[1])) {
           stops.get(key)?.(); stops.delete(key); pending.delete(key); errors.delete(key);
         }
@@ -229,29 +233,7 @@ function ScopedTelehealthProvider({ children, authState }: { children: ReactNode
       if (isDoctor) refreshRelations(); replaceMessageScope([]);
     });
     if (isDoctor) {
-      listen('all_patients', query(collection(db, 'users'), where('role', 'in', ['patient', 'Patient'])), snapshot => {
-        for (const item of snapshot.docs) {
-          const profile = item.data();
-          if (String(profile?.role).toLowerCase() === 'patient') {
-            patients.set(item.id, profile);
-            if (profile?.assignedDoctorId === uid) {
-              assigned.set(item.id, profile);
-            }
-          }
-        }
-        refreshRelations();
-      }, () => { refreshRelations(); });
-      listen('assigned', query(collection(db, 'users'), where('assignedDoctorId', '==', uid)), snapshot => {
-        assigned.clear();
-        for (const item of snapshot.docs) {
-          const pData = item.data();
-          if (String(pData?.role).toLowerCase() === 'patient') {
-            assigned.set(item.id, pData);
-            patients.set(item.id, pData);
-          }
-        }
-        refreshRelations();
-      }, () => { assigned.clear(); refreshRelations(); });
+      refreshRelations();
     } else {
       replaceRecordScope([uid]);
     }
@@ -272,6 +254,18 @@ function ScopedTelehealthProvider({ children, authState }: { children: ReactNode
     if (!physician.exists() || String(physician.data().role).toLowerCase() !== 'doctor' || physician.data().isVerified !== true) throw new Error('Your clinician access is no longer verified.');
     const patient = await transaction.get(doc(db, 'users', patientId));
     if (!patient.exists() || String(patient.data().role).toLowerCase() !== 'patient') throw new Error('Choose a registered patient.');
+    const pData = patient.data();
+    if (pData?.assignedDoctorId === account.uid) {
+      return account;
+    }
+    const bookedApt = view.doctorAppointmentsQueue.find(apt => apt.patientId === patientId);
+    if (!bookedApt) {
+      throw new Error('This patient is not assigned to you or booked for an appointment.');
+    }
+    const appointmentDoc = await transaction.get(doc(db, 'appointments', bookedApt.id));
+    if (!appointmentDoc.exists() || appointmentDoc.data()?.doctorId !== account.uid || appointmentDoc.data()?.patientId !== patientId || appointmentDoc.data()?.status?.toLowerCase() === 'cancelled') {
+      throw new Error('Your appointment details could not be confirmed.');
+    }
     return account;
   };
   const addAppointment = async (appointment: Appointment) => {

@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "173041146452",
+    "firebase_url": "https://curalink-telehealth-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "curalink-telehealth",
+    "storage_bucket": "curalink-telehealth.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:173041146452:android:f0b9823905cb9b2343abc1",
+        "android_client_info": {
+          "package_name": "com.curalink.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "173041146452-qdgf347ljf2vkvksqq7erb7dui3gs3oi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDnBHHsBdO9I3SNuYvJwXIxiMIi69zRq_E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "173041146452-qdgf347ljf2vkvksqq7erb7dui3gs3oi.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -265,13 +265,22 @@ export function BookAppointmentModal({ isOpen, onClose, onBook, patientName, pat
     launchingRef.current = true;
     setIsProcessing(true);
     setError('');
+    const clientKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+    if (!clientKey) {
+      const msg = 'Razorpay Key ID is not configured (NEXT_PUBLIC_RAZORPAY_KEY_ID is missing).';
+      alert(msg);
+      setError(msg);
+      launchingRef.current = false;
+      setIsProcessing(false);
+      return;
+    }
+
     try {
       const Razorpay = await loadRazorpay();
       const token = await auth.currentUser?.getIdToken();
       let orderId: string | undefined;
-      const clientKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_51MockKeyId';
 
-      // 1. Check backend order endpoints
+      // 1. Create order via backend API route (/api/razorpay/order) before opening checkout modal
       if (token) {
         try {
           const res = await fetch('/api/razorpay/order', {
@@ -280,7 +289,7 @@ export function BookAppointmentModal({ isOpen, onClose, onBook, patientName, pat
           });
           if (res.ok) {
             const data = await res.json();
-            if (data?.orderId) orderId = data.orderId;
+            orderId = data?.order?.id || data?.orderId || data?.id;
           } else {
             const fallbackRes = await fetch('/api/create-order', {
               method: 'POST',
@@ -288,11 +297,11 @@ export function BookAppointmentModal({ isOpen, onClose, onBook, patientName, pat
             });
             if (fallbackRes.ok) {
               const data = await fallbackRes.json();
-              if (data?.orderId) orderId = data.orderId;
+              orderId = data?.order?.id || data?.orderId || data?.id;
             }
           }
         } catch {
-          // Backend order service fallback to standard client checkout
+          // Backend order service fallback
         }
       }
 
@@ -302,6 +311,7 @@ export function BookAppointmentModal({ isOpen, onClose, onBook, patientName, pat
         currency: 'INR',
         name: 'CuraLink Telehealth',
         description: 'Doctor Consultation Fee',
+        ...(orderId ? { order_id: orderId } : {}),
         prefill: {
           name: currentUser?.fullName || patientName,
           email: currentUser?.email || '',

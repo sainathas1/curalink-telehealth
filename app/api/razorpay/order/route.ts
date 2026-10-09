@@ -68,7 +68,9 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
+      order: { id: order.id, amount: order.amount, currency: order.currency },
       orderId: order.id,
+      id: order.id,
       amount: CONSULTATION_AMOUNT,
       currency: CONSULTATION_CURRENCY,
       keyId,

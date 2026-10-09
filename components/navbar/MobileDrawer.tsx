@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, type KeyboardEvent } from 'react';
-import { AlertTriangle, HeartPulse, LogOut, User, X } from 'lucide-react';
+import { AlertTriangle, HeartPulse, LogOut, PhoneCall, User, X } from 'lucide-react';
 import type { UserProfile, UserRole } from '../../lib/types';
 import { getNavigation, type ActiveTab } from './navigation';
 
@@ -82,7 +82,27 @@ export function MobileDrawer({ isOpen, onClose, role, activeTab, onSelectTab, cu
           </nav>
         </div>
         <div className="space-y-2 border-t border-slate-100 p-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}>
-          {isPatient && onEmergencySOS && <button type="button" onClick={() => { onClose(); onEmergencySOS(); }} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 hover:bg-rose-100 focus-visible:outline-2 focus-visible:outline-rose-600"><AlertTriangle size={17} aria-hidden="true" />Emergency help</button>}
+          {isPatient && (
+            <div className="space-y-1.5">
+              <a
+                href="tel:8788246552"
+                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-rose-600 text-xs font-bold text-white hover:bg-rose-700 active:scale-[0.98]"
+              >
+                <PhoneCall size={15} aria-hidden="true" />
+                <span>Call Hotline (8788246552)</span>
+              </a>
+              {onEmergencySOS && (
+                <button
+                  type="button"
+                  onClick={() => { onClose(); onEmergencySOS(); }}
+                  className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 hover:bg-rose-100 active:scale-[0.98]"
+                >
+                  <AlertTriangle size={15} aria-hidden="true" />
+                  <span>More SOS Options</span>
+                </button>
+              )}
+            </div>
+          )}
           {currentUser && <button type="button" onClick={() => { onClose(); onLogout(); }} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-teal-600"><LogOut size={16} aria-hidden="true" />Sign out</button>}
         </div>
       </div>

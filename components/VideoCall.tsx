@@ -34,10 +34,51 @@ export default function VideoCall({ roomName, userName, showInviteControls = fal
       setCopied(true); setCopyError('');
     } catch { setCopyError('We could not copy the link. You can copy this page address from your browser.'); }
   }
-  return <div className={`flex min-h-96 flex-col ${className}`}>
-    {showInviteControls && <div className="mb-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600"><span>Consultation with {isDoctor ? appointment.patientName : appointment.doctorName}</span><button type="button" onClick={copyInvite} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-teal-800">{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? 'Link copied' : 'Copy appointment link'}</button>{copyError && <p role="alert" className="w-full text-xs text-rose-700">{copyError}</p>}</div>}
-    <div className="min-h-[500px] flex-1 overflow-hidden rounded-2xl bg-slate-950">
-      <JitsiMeeting domain="meet.jit.si" roomName={`CuraLink-${appointment.id}`} configOverwrite={{ startWithAudioMuted: true, startWithVideoMuted: true, prejoinPageEnabled: true, disableDeepLinking: true, enableClosePage: false, disableInviteFunctions: true }} interfaceConfigOverwrite={{ SHOW_JITSI_WATERMARK: false, SHOW_WATERMARK_FOR_GUESTS: false, DEFAULT_REMOTE_DISPLAY_NAME: 'Care team participant' }} userInfo={{ displayName: userName || currentUser.fullName, email: currentUser.email }} onReadyToClose={onLeave} getIFrameRef={iframe => { iframe.style.height = '100%'; iframe.style.width = '100%'; iframe.style.minHeight = '500px'; iframe.style.border = 'none'; iframe.setAttribute('title', 'CuraLink video consultation'); iframe.setAttribute('allow', 'camera; microphone; display-capture; autoplay; fullscreen'); }} />
+  return (
+    <div className={`w-full flex flex-col ${className}`}>
+      {showInviteControls && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+          <span>Consultation with {isDoctor ? appointment.patientName : appointment.doctorName}</span>
+          <button type="button" onClick={copyInvite} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 font-semibold text-teal-800 transition active:scale-[0.98]">
+            {copied ? <Check size={16} /> : <Copy size={16} />}
+            {copied ? 'Link copied' : 'Copy appointment link'}
+          </button>
+          {copyError && <p role="alert" className="w-full text-xs text-rose-700">{copyError}</p>}
+        </div>
+      )}
+      <div className="w-full h-[calc(100vh-80px)] min-h-[500px] flex flex-col relative overflow-hidden rounded-2xl bg-slate-950 shadow-inner">
+        <JitsiMeeting
+          domain="meet.jit.si"
+          roomName={`CuraLink-${appointment.id}`}
+          configOverwrite={{
+            startWithAudioMuted: true,
+            startWithVideoMuted: true,
+            prejoinPageEnabled: true,
+            disableDeepLinking: true,
+            enableClosePage: false,
+            disableInviteFunctions: true,
+          }}
+          interfaceConfigOverwrite={{
+            SHOW_JITSI_WATERMARK: false,
+            SHOW_WATERMARK_FOR_GUESTS: false,
+            DEFAULT_REMOTE_DISPLAY_NAME: 'Care team participant',
+          }}
+          userInfo={{
+            displayName: userName || currentUser.fullName,
+            email: currentUser.email,
+          }}
+          onReadyToClose={onLeave}
+          getIFrameRef={(iframe) => {
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = '0';
+            iframe.style.position = 'absolute';
+            iframe.style.inset = '0';
+            iframe.setAttribute('title', 'CuraLink video consultation');
+            iframe.setAttribute('allow', 'camera; microphone; display-capture; autoplay; clipboard-write; screen-wake-lock');
+          }}
+        />
+      </div>
     </div>
-  </div>;
+  );
 }

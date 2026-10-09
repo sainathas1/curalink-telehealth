@@ -1,0 +1,86 @@
+import { NextResponse } from 'next/server';
+import Razorpay from 'razorpay';
+import firebaseConfig from '../../../../firebase-applet-config.json';
+
+const CONSULTATION_AMOUNT = 50000;
+const CONSULTATION_CURRENCY = 'INR';
+const responseHeaders = { 'Cache-Control': 'no-store' };
+
+function hasActiveAccount(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object' || !('users' in payload) || !Array.isArray(payload.users)) return false;
+  return payload.users.some((user: unknown) => (
+    Boolean(user) && typeof user === 'object' && user !== null &&
+    'localId' in user && typeof user.localId === 'string' && Boolean(user.localId) &&
+    (!('disabled' in user) || user.disabled !== true)
+  ));
+}
+
+export async function POST(request: Request) {
+  const idToken = request.headers.get('authorization')?.match(/^Bearer\s+(\S+)$/i)?.[1];
+  if (!idToken) {
+    return NextResponse.json({ error: 'Sign in before starting payment.', code: 'AUTH_REQUIRED' }, { status: 401, headers: responseHeaders });
+  }
+
+  const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.trim() || process.env.RAZORPAY_KEY_ID?.trim();
+  const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+  if (!keyId || !keySecret) {
+    return NextResponse.json({
+      fallback: true,
+      keyId: keyId || 'rzp_test_51MockKeyId',
+      amount: CONSULTATION_AMOUNT,
+      currency: CONSULTATION_CURRENCY,
+      message: 'Razorpay secret key not configured on server; proceed with standard client checkout.'
+    }, { headers: responseHeaders });
+  }
+
+  try {
+    const authResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(firebaseConfig.apiKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (authResponse.status === 429 || authResponse.status >= 500) {
+      return NextResponse.json({ error: 'We could not check your session. Please try again.', code: 'AUTH_UNAVAILABLE' }, { status: 503, headers: responseHeaders });
+    }
+    if (!authResponse.ok || !hasActiveAccount(await authResponse.json())) {
+      return NextResponse.json({ error: 'Your session has expired. Please sign in again.', code: 'AUTH_INVALID' }, { status: 401, headers: responseHeaders });
+    }
+  } catch {
+    return NextResponse.json({ error: 'Session verification could not be completed.', code: 'AUTH_UNAVAILABLE' }, { status: 503, headers: responseHeaders });
+  }
+
+  try {
+    const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    const order = await razorpay.orders.create({
+      amount: CONSULTATION_AMOUNT,
+      currency: CONSULTATION_CURRENCY,
+      receipt: 'curalink_' + Math.random().toString(36).substring(2, 9),
+      notes: {
+        platform: 'CuraLink Telehealth',
+        service: 'Doctor Consultation Fee',
+      },
+    });
+
+    if (!order.id) {
+      return NextResponse.json({ error: 'Invalid order returned by payment provider.', code: 'ORDER_INVALID' }, { status: 502, headers: responseHeaders });
+    }
+
+    return NextResponse.json({
+      orderId: order.id,
+      amount: CONSULTATION_AMOUNT,
+      currency: CONSULTATION_CURRENCY,
+      keyId,
+    }, { headers: responseHeaders });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown payment error';
+    return NextResponse.json({
+      fallback: true,
+      keyId,
+      amount: CONSULTATION_AMOUNT,
+      currency: CONSULTATION_CURRENCY,
+      message
+    }, { headers: responseHeaders });
+  }
+}

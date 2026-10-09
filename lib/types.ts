@@ -18,8 +18,14 @@ export interface UserProfile {
   allergies?: string[];
   knownAllergies?: string; // Known allergies text
   chronicConditions?: string[]; // Diabetes, Hypertension, Asthma, None, etc.
-  currentMedications?: string; // Current medications text
+  currentMedications?: string; // Current medications
   assignedDoctorId?: string;
+  age?: number | string; // Mandatory for patients
+  gender?: string;
+  phone?: string;
+  qualifications?: string; // For doctors
+  consultationFee?: number; // For doctors (₹)
+  bio?: string; // For doctors
 }
 
 export type VitalStatus = 'normal' | 'elevated' | 'critical';
@@ -74,6 +80,7 @@ export interface Appointment {
   patientEmail?: string;
   patientPhone?: string;
   emergencyContact?: string;
+  patientAge?: number;
   bloodGroup?: string;
   knownAllergies?: string;
   chronicConditions?: string[];

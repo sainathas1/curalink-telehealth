@@ -76,6 +76,9 @@ export default function PatientProfileRoute() {
 
   // Form edit states
   const [editFullName, setEditFullName] = useState('');
+  const [editAge, setEditAge] = useState<number | string>('');
+  const [editDateOfBirth, setEditDateOfBirth] = useState('');
+  const [editGender, setEditGender] = useState('');
   const [editPhoneNumber, setEditPhoneNumber] = useState('');
   const [editEmergencyContact, setEditEmergencyContact] = useState('');
   const [editBloodGroup, setEditBloodGroup] = useState('');
@@ -106,6 +109,9 @@ export default function PatientProfileRoute() {
   useEffect(() => {
     if (isEditModalOpen) {
       setEditFullName(profileData.fullName || currentUser?.fullName || '');
+      setEditAge(profileData.age ?? currentUser?.age ?? '');
+      setEditDateOfBirth(profileData.dateOfBirth || currentUser?.dateOfBirth || '');
+      setEditGender(profileData.gender || currentUser?.gender || '');
       setEditPhoneNumber(profileData.phoneNumber || currentUser?.phoneNumber || '');
       setEditEmergencyContact(profileData.emergencyContact || currentUser?.emergencyContact || '');
       setEditBloodGroup(profileData.bloodGroup || profileData.bloodType || currentUser?.bloodGroup || '');
@@ -152,6 +158,12 @@ export default function PatientProfileRoute() {
       return;
     }
 
+    const parsedAge = parseInt(String(editAge).trim(), 10);
+    if (!editAge || isNaN(parsedAge) || parsedAge <= 0 || parsedAge > 130) {
+      setSaveError('Age is mandatory and must be a valid number between 1 and 130.');
+      return;
+    }
+
     setIsSaving(true);
     setSaveError(null);
 
@@ -163,6 +175,9 @@ export default function PatientProfileRoute() {
 
       const updatedPayload = {
         fullName: editFullName.trim() || profileData.fullName || 'Patient',
+        age: parsedAge,
+        dateOfBirth: editDateOfBirth.trim(),
+        gender: editGender.trim() || 'Not specified',
         phoneNumber: editPhoneNumber.trim(),
         emergencyContact: editEmergencyContact.trim(),
         bloodGroup: editBloodGroup.trim(),
@@ -200,6 +215,9 @@ export default function PatientProfileRoute() {
 
   // Resolved dynamic fields from Firestore with clean graceful fallbacks
   const patientName = profileData.fullName || currentUser?.fullName || 'Patient';
+  const patientAge = profileData.age ?? currentUser?.age ?? null;
+  const patientDOB = profileData.dateOfBirth || currentUser?.dateOfBirth || 'Not specified';
+  const patientGender = profileData.gender || currentUser?.gender || 'Not specified';
   const patientEmail = profileData.email || currentUser?.email || 'patient@curalink.health';
   const patientPhone = profileData.phoneNumber || currentUser?.phoneNumber || 'No phone number provided';
   const patientEmergency = profileData.emergencyContact || currentUser?.emergencyContact || 'No emergency contact provided';
@@ -340,7 +358,40 @@ export default function PatientProfileRoute() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+          {/* Age */}
+          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block flex items-center gap-1">
+              <User className="w-3 h-3 text-teal-600" />
+              Age
+            </span>
+            <span className="text-sm font-black text-slate-900 mt-1 block font-mono">
+              {patientAge ? `${patientAge} yrs` : 'Not specified'}
+            </span>
+          </div>
+
+          {/* Gender */}
+          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block flex items-center gap-1">
+              <Activity className="w-3 h-3 text-teal-600" />
+              Gender
+            </span>
+            <span className="text-xs font-bold text-slate-800 mt-1 block">
+              {patientGender}
+            </span>
+          </div>
+
+          {/* Date of Birth */}
+          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block flex items-center gap-1">
+              <Calendar className="w-3 h-3 text-teal-600" />
+              Date of Birth
+            </span>
+            <span className="text-xs font-bold text-slate-800 mt-1 block">
+              {patientDOB}
+            </span>
+          </div>
+
           {/* Blood Group */}
           <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
             <span className="text-[10px] uppercase font-bold text-slate-400 block flex items-center gap-1">
@@ -351,17 +402,17 @@ export default function PatientProfileRoute() {
               {bloodGroup}
             </span>
           </div>
+        </div>
 
-          {/* Allergies */}
-          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 sm:col-span-2">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3 text-amber-500" />
-              Known Allergies
-            </span>
-            <span className="text-xs font-bold text-slate-800 mt-1 block truncate">
-              {allergies}
-            </span>
-          </div>
+        {/* Known Allergies */}
+        <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
+          <span className="text-[10px] uppercase font-bold text-slate-400 block flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3 text-amber-500" />
+            Known Allergies
+          </span>
+          <span className="text-xs font-bold text-slate-800 mt-1 block truncate">
+            {allergies}
+          </span>
         </div>
 
         {/* Chronic Conditions & Medications */}
@@ -575,7 +626,7 @@ export default function PatientProfileRoute() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                      Full Name
+                      Full Name <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -588,6 +639,58 @@ export default function PatientProfileRoute() {
 
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                      Age (Years) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="130"
+                      required
+                      value={editAge}
+                      onChange={(e) => setEditAge(e.target.value)}
+                      placeholder="e.g. 29"
+                      className="w-full p-2.5 rounded-xl border border-slate-300 text-slate-800 focus:outline-none focus:border-teal-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Date of Birth & Gender */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                      Date of Birth
+                    </label>
+                    <input
+                      type="date"
+                      max={new Date().toISOString().split('T')[0]}
+                      value={editDateOfBirth}
+                      onChange={(e) => setEditDateOfBirth(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 text-slate-800 focus:outline-none focus:border-teal-500 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                      Gender
+                    </label>
+                    <select
+                      value={editGender}
+                      onChange={(e) => setEditGender(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-300 text-slate-800 focus:outline-none focus:border-teal-500 bg-white"
+                    >
+                      <option value="">Select Gender...</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Phone & Emergency Contact */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                       Phone Number
                     </label>
                     <input
@@ -598,13 +701,10 @@ export default function PatientProfileRoute() {
                       className="w-full p-2.5 rounded-xl border border-slate-300 text-slate-800 focus:outline-none focus:border-teal-500"
                     />
                   </div>
-                </div>
 
-                {/* Emergency Contact & Blood Group */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                      Emergency Contact
+                      Emergency Contact Details
                     </label>
                     <input
                       type="text"
@@ -614,22 +714,23 @@ export default function PatientProfileRoute() {
                       className="w-full p-2.5 rounded-xl border border-slate-300 text-slate-800 focus:outline-none focus:border-teal-500"
                     />
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                      Blood Group
-                    </label>
-                    <select
-                      value={editBloodGroup}
-                      onChange={(e) => setEditBloodGroup(e.target.value)}
-                      className="w-full p-2.5 rounded-xl border border-slate-300 text-slate-800 focus:outline-none focus:border-teal-500 bg-white"
-                    >
-                      <option value="">Select Blood Group...</option>
-                      {BLOOD_GROUPS.map((bg) => (
-                        <option key={bg} value={bg}>{bg}</option>
-                      ))}
-                    </select>
-                  </div>
+                {/* Blood Group */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                    Blood Group
+                  </label>
+                  <select
+                    value={editBloodGroup}
+                    onChange={(e) => setEditBloodGroup(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 text-slate-800 focus:outline-none focus:border-teal-500 bg-white"
+                  >
+                    <option value="">Select Blood Group...</option>
+                    {BLOOD_GROUPS.map((bg) => (
+                      <option key={bg} value={bg}>{bg}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Known Allergies */}

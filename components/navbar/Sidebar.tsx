@@ -42,9 +42,35 @@ export function Sidebar({ role, activeTab, onSelectTab, isCollapsed, onToggleCol
       </nav>
       <div className="mt-8 border-t border-slate-100 p-4">
         {isPatient ? (
-          <div className={isCollapsed ? '' : 'rounded-2xl border border-rose-100 bg-rose-50/60 p-4'}>
-            {!isCollapsed && <><p className="mb-1 text-sm font-semibold text-slate-800">Need urgent help?</p><p className="mb-3 text-xs leading-relaxed text-slate-500">Find emergency contacts when you need urgent assistance.</p></>}
-            <button type="button" onClick={onEmergencySOS} aria-label="Open emergency help" className={`flex min-h-10 items-center justify-center gap-2 rounded-xl font-semibold text-rose-700 transition-colors hover:bg-rose-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 ${isCollapsed ? 'h-11 w-11' : 'w-full border border-rose-200 bg-white px-3 text-xs'}`}><AlertTriangle size={17} aria-hidden="true" />{!isCollapsed && 'Emergency help'}</button>
+          <div className={isCollapsed ? '' : 'rounded-2xl border border-rose-200 bg-rose-50/70 p-4'}>
+            {!isCollapsed && (
+              <>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-bold text-slate-800">Need urgent help?</p>
+                  <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[9px] font-black text-white">HOTLINE</span>
+                </div>
+                <p className="mb-2 text-[11px] leading-relaxed text-slate-500">Superadmin Hotline: 8788246552</p>
+              </>
+            )}
+            <div className="space-y-1.5">
+              <a
+                href="tel:8788246552"
+                aria-label="Direct dial emergency hotline 8788246552"
+                className={`flex min-h-10 items-center justify-center gap-2 rounded-xl bg-rose-600 font-bold text-white transition-colors hover:bg-rose-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 ${isCollapsed ? 'h-11 w-11' : 'w-full px-3 text-xs'}`}
+              >
+                <AlertTriangle size={15} aria-hidden="true" />
+                {!isCollapsed && 'Call 8788246552'}
+              </a>
+              {!isCollapsed && (
+                <button
+                  type="button"
+                  onClick={onEmergencySOS}
+                  className="w-full text-center text-[10px] font-medium text-rose-700 hover:underline pt-0.5"
+                >
+                  More emergency options
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className={`flex items-start gap-2.5 rounded-xl bg-slate-50 p-3 ${isCollapsed ? 'justify-center' : ''}`}>

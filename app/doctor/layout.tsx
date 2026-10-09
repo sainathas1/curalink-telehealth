@@ -21,6 +21,7 @@ const doctorRoutes: Record<DoctorTab, string> = {
   records: '/doctor/records',
   'ehr-prescribe': '/doctor/ehr',
   'hardware-hub': '/doctor/iot-hub',
+  profile: '/doctor/profile',
 };
 
 export default function DoctorLayout({ children }: { children: ReactNode }) {

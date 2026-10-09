@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Download, FileText, LoaderCircle, X } from 'lucide-react';
+import { Download, Eye, FileText, LoaderCircle, X } from 'lucide-react';
 import type { ClinicalRecord, PatientDirectoryItem } from '../../lib/types';
 import { useTelehealth } from '../../context/TelehealthContext';
 
@@ -105,26 +105,182 @@ export function normalizeWorkspaceRecords(records: ClinicalRecord[], patients: P
   }).sort((left, right) => right.timestamp - left.timestamp);
 }
 
+export interface DecodedAttachment {
+  blob: Blob;
+  objectUrl: string;
+  mimeType: string;
+  isPdf: boolean;
+  isImage: boolean;
+  filename: string;
+}
+
+export function parseAttachmentToBlob(attachment: string, title: string, id: string): DecodedAttachment | null {
+  if (!attachment || typeof attachment !== 'string') return null;
+  const trimmed = attachment.trim();
+  if (trimmed.length < 10) return null;
+
+  let mimeType = 'application/pdf';
+  let base64Data = trimmed;
+
+  const dataUriMatch = trimmed.match(/^data:([^;,]+)(?:;charset=[^;,]+)?(?:;base64)?,([\s\S]*)$/i);
+  if (dataUriMatch) {
+    mimeType = dataUriMatch[1].toLowerCase();
+    base64Data = dataUriMatch[2].replace(/\s/g, '');
+  } else {
+    const sample = trimmed.slice(0, 30);
+    if (sample.startsWith('JVBER')) {
+      mimeType = 'application/pdf';
+    } else if (sample.startsWith('/9j/')) {
+      mimeType = 'image/jpeg';
+    } else if (sample.startsWith('iVBOR')) {
+      mimeType = 'image/png';
+    } else if (sample.startsWith('R0lGO')) {
+      mimeType = 'image/gif';
+    } else if (sample.startsWith('UklGR')) {
+      mimeType = 'image/webp';
+    } else if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return null;
+    }
+    base64Data = trimmed.replace(/\s/g, '');
+  }
+
+  try {
+    const binaryStr = atob(base64Data);
+    const len = binaryStr.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: mimeType });
+    const objectUrl = URL.createObjectURL(blob);
+    const isPdf = mimeType.includes('pdf');
+    const isImage = mimeType.startsWith('image/');
+    const ext = isPdf ? '.pdf' : mimeType === 'image/jpeg' ? '.jpg' : mimeType === 'image/png' ? '.png' : mimeType === 'image/webp' ? '.webp' : '';
+    const safeTitle = (title || 'medical_record_' + id).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_');
+    const filename = safeTitle.toLowerCase().endsWith(ext) ? safeTitle : `${safeTitle}${ext}`;
+
+    return { blob, objectUrl, mimeType, isPdf, isImage, filename };
+  } catch (err) {
+    console.warn('Failed to decode base64 attachment:', err);
+    return null;
+  }
+}
+
+export function downloadAttachment(attachment: string, title: string, id: string): boolean {
+  if (attachment.startsWith('http://') || attachment.startsWith('https://')) {
+    const a = document.createElement('a');
+    a.href = attachment;
+    a.download = title || 'medical_record';
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return true;
+  }
+
+  const decoded = parseAttachmentToBlob(attachment, title, id);
+  if (!decoded) return false;
+
+  const a = document.createElement('a');
+  a.href = decoded.objectUrl;
+  a.download = decoded.filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  setTimeout(() => {
+    URL.revokeObjectURL(decoded.objectUrl);
+  }, 2000);
+
+  return true;
+}
+
 export function RecordAttachment({ record, preview = false }: { record: WorkspaceRecord; preview?: boolean }) {
   const attachment = record.attachment;
-  const downloadable = /^(data:[^,]+,|https?:\/\/|blob:)/i.test(attachment);
-  if (!downloadable) return <p className="text-xs text-slate-400">No attachment included.</p>;
-  const isImage = /^data:image\/(png|jpe?g|gif|webp);/i.test(attachment);
-  const isPdf = /^data:application\/pdf[;,]/i.test(attachment);
-  const filename = record.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_') + (isPdf && !record.title.toLowerCase().endsWith('.pdf') ? '.pdf' : '');
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [decoded, setDecoded] = useState<DecodedAttachment | null>(null);
+
+  useEffect(() => {
+    if (!attachment) return;
+    const parsed = parseAttachmentToBlob(attachment, record.title, record.id);
+    setDecoded(parsed);
+    return () => {
+      if (parsed) URL.revokeObjectURL(parsed.objectUrl);
+    };
+  }, [attachment, record.title, record.id]);
+
+  if (!attachment || attachment.trim().length < 10) {
+    return <p className="text-xs text-slate-400">No document attached.</p>;
+  }
+
+  const isRemote = attachment.startsWith('http://') || attachment.startsWith('https://');
+  const previewUrl = decoded ? decoded.objectUrl : isRemote ? attachment : '';
+  const isImage = decoded?.isImage || /^data:image\//i.test(attachment);
+  const isPdf = decoded?.isPdf || /^data:application\/pdf/i.test(attachment) || (!isImage && !isRemote);
+
+  const handleDownload = () => {
+    downloadAttachment(attachment, record.title, record.id);
+  };
+
   return (
     <div className="space-y-3">
-      <a href={attachment} download={filename} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-teal-800 hover:bg-teal-50 focus-visible:outline-2 focus-visible:outline-teal-700">
-        <Download size={15} aria-hidden="true" />Download attachment
-      </a>
-      {preview && isImage && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          {/* Uploaded data images use the original data URL. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={attachment} alt={record.title} className="max-h-96 w-full object-contain" />
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={handleDownload}
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 transition hover:border-teal-300 hover:bg-teal-50 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-teal-700"
+        >
+          <Download size={14} aria-hidden="true" />Download
+        </button>
+        {previewUrl && (
+          <button
+            type="button"
+            onClick={() => setIsPreviewOpen(true)}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-800 transition hover:bg-teal-100 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-teal-700"
+          >
+            <Eye size={14} aria-hidden="true" />Preview
+          </button>
+        )}
+      </div>
+
+      {(preview || isPreviewOpen) && previewUrl && (
+        preview ? (
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            {isImage && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewUrl} alt={record.title} className="max-h-96 w-full rounded-xl object-contain shadow-sm" />
+            )}
+            {isPdf && (
+              <iframe src={previewUrl} title={record.title + ' preview'} className="h-96 w-full rounded-xl border border-slate-200 bg-white shadow-sm" />
+            )}
+          </div>
+        ) : (
+          <WorkspaceDialog title={`Document Preview: ${record.title}`} onClose={() => setIsPreviewOpen(false)}>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <span className="text-xs text-slate-500">Format: {decoded?.mimeType || (isPdf ? 'PDF' : 'Image')}</span>
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 transition active:scale-[0.98]"
+                >
+                  <Download size={14} />Download Document
+                </button>
+              </div>
+              <div className="flex items-center justify-center min-h-[400px] rounded-2xl border border-slate-200 bg-slate-900/5 p-2">
+                {isImage && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={previewUrl} alt={record.title} className="max-h-[70vh] w-auto max-w-full rounded-xl object-contain shadow-md" />
+                )}
+                {isPdf && (
+                  <iframe src={previewUrl} title={record.title} className="h-[70vh] w-full rounded-xl border border-slate-200 bg-white shadow-md" />
+                )}
+              </div>
+            </div>
+          </WorkspaceDialog>
+        )
       )}
-      {preview && isPdf && <iframe src={attachment} title={record.title + ' preview'} sandbox="" className="h-96 w-full rounded-xl border border-slate-200 bg-slate-50" />}
     </div>
   );
 }

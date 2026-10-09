@@ -137,6 +137,12 @@ export function DoctorDashboard({ doctor, onNavigateTab, onStartVideoCall, onOpe
                 const active = activeAppointmentStatuses.has((appointment?.status || '').toLowerCase());
                 const patientName = appointment?.patientName || 'Patient';
                 const initials = patientName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0]).join('');
+                const matchedPatient = safeDirectory.find(
+                  (p) => p.id === appointment.patientId || p.name?.toLowerCase() === patientName.toLowerCase()
+                );
+                const displayAge = appointment.patientAge || (matchedPatient?.age && matchedPatient.age > 0 ? matchedPatient.age : null);
+                const displayGender = matchedPatient?.gender;
+
                 return (
                   <li key={appointment.id} className="group p-5 transition-colors duration-150 hover:bg-slate-50/60">
                     <div className="flex flex-col justify-between gap-3 sm:flex-row">
@@ -145,7 +151,21 @@ export function DoctorDashboard({ doctor, onNavigateTab, onStartVideoCall, onOpe
                           {initials}
                         </span>
                         <div>
-                          <h3 className="text-sm font-semibold text-slate-900">{patientName}</h3>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-semibold text-slate-900">{patientName}</h3>
+                            {displayAge ? (
+                              <span className="inline-flex items-center rounded-md bg-teal-50 px-2 py-0.5 text-[11px] font-bold text-teal-700 border border-teal-200/60 shadow-2xs">
+                                Age: {displayAge} yrs
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                                Age: Not specified
+                              </span>
+                            )}
+                            {displayGender && (
+                              <span className="text-[10px] text-slate-400 font-medium">({displayGender})</span>
+                            )}
+                          </div>
                           <p className="mt-0.5 text-xs text-slate-500">{appointment.type || 'Consultation'}</p>
                           <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                             <Clock size={13} aria-hidden="true" />
@@ -219,6 +239,26 @@ export function DoctorDashboard({ doctor, onNavigateTab, onStartVideoCall, onOpe
               className="mt-4 flex min-h-11 w-full items-center justify-between rounded-xl bg-teal-50 px-4 text-xs font-semibold text-teal-800 transition-colors hover:bg-teal-100 focus-visible:outline-2 focus-visible:outline-teal-700"
             >
               Open patient directory
+              <ArrowRight size={15} aria-hidden="true" />
+            </button>
+          </section>
+
+          <section className="care-card p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900">Your Clinician Profile</h2>
+              <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-bold text-teal-800">
+                {doctor.specialty || 'General'}
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-400">
+              Update your qualifications, specialty, consultation fee (₹), phone, and bio.
+            </p>
+            <button
+              type="button"
+              onClick={() => onNavigateTab('profile')}
+              className="mt-4 flex min-h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-700"
+            >
+              Manage doctor profile
               <ArrowRight size={15} aria-hidden="true" />
             </button>
           </section>

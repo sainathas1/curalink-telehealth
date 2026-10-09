@@ -75,12 +75,50 @@ export function EmergencySOSModal({
         </div>
         <p id="emergency-help-description" className="text-sm leading-6 text-slate-600">CuraLink has not dispatched an ambulance, contacted emergency services, or notified your clinician. Use your phone to request help directly.</p>
 
+        {/* Superadmin Emergency Hotline Card */}
+        <section aria-label="Superadmin Hotline" className="rounded-2xl border-2 border-rose-300 bg-rose-50/80 p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-white shadow-2xs">
+              Superadmin 24/7 Hotline
+            </span>
+            <span className="text-xs font-semibold text-rose-700">Immediate Response</span>
+          </div>
+
+          <div className="mt-3">
+            <p className="text-sm font-bold text-slate-900">
+              CuraLink Superadmin Dispatch: <span className="font-mono text-rose-700">8788246552</span>
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-600">
+              Direct line to CuraLink clinical supervision and urgent dispatch coordinators.
+            </p>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <a
+              href="tel:8788246552"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold text-white shadow-sm transition hover:bg-rose-700 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-rose-700"
+            >
+              <PhoneCall className="h-4 w-4" aria-hidden="true" />
+              <span>Direct Dial 8788246552</span>
+            </a>
+
+            <a
+              href="https://wa.me/918788246552"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-emerald-700"
+            >
+              <span>Launch WhatsApp</span>
+            </a>
+          </div>
+        </section>
+
         <section aria-label="Saved emergency contact" className="rounded-2xl border border-slate-200 p-5">
-          <div className="flex items-center gap-2 text-sm font-semibold"><UserRound className="h-4 w-4 text-teal-700" aria-hidden="true" />Your emergency contact</div>
+          <div className="flex items-center gap-2 text-sm font-semibold"><UserRound className="h-4 w-4 text-teal-700" aria-hidden="true" />Personal emergency contact</div>
           {emergencyContact ? <>
             <p className="mt-2 break-words text-sm leading-6 text-slate-600">{emergencyContact}</p>
-            {emergencyPhone ? <a href={`tel:${emergencyPhone}`} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"><PhoneCall className="h-4 w-4" aria-hidden="true" />Call your emergency contact</a> : <p className="mt-3 text-xs leading-5 text-slate-500">A callable phone number is not saved. Contact this person using your phone.</p>}
-          </> : <p className="mt-2 text-sm leading-6 text-slate-500">No emergency contact is saved in your profile. Ask someone nearby to help you call.</p>}
+            {emergencyPhone ? <a href={`tel:${emergencyPhone}`} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"><PhoneCall className="h-4 w-4" aria-hidden="true" />Call personal contact</a> : <p className="mt-3 text-xs leading-5 text-slate-500">A callable phone number is not saved. Contact this person using your phone.</p>}
+          </> : <p className="mt-2 text-sm leading-6 text-slate-500">No personal emergency contact saved in your profile. You can dial the Superadmin hotline above.</p>}
         </section>
 
         <section aria-label="Device readings" className="rounded-2xl bg-slate-50 p-5">

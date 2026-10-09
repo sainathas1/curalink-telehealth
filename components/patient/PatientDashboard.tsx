@@ -7,6 +7,7 @@ import { db } from '../../lib/firebase';
 import { Appointment, LiveTelemetryPayload, MedicalRecord, Prescription, UserProfile } from '../../lib/types';
 import { PatientTab } from '../navbar/Sidebar';
 import { useTelehealth } from '../../context/TelehealthContext';
+import { EmergencySOS } from './EmergencySOS';
 
 interface PatientDashboardProps {
   user: UserProfile; telemetry: LiveTelemetryPayload; appointments: Appointment[];
@@ -17,7 +18,7 @@ interface PatientDashboardProps {
 }
 interface HardwareReading { uid: string; temperature: number | null; syncedAt: string; deviceModel: string; }
 
-export function PatientDashboard({ user, telemetry, appointments, prescriptions, records, onNavigateTab, onJoinVideoCall }: PatientDashboardProps) {
+export function PatientDashboard({ user, telemetry, appointments, prescriptions, records, onNavigateTab, onJoinVideoCall, onEmergencySOS }: PatientDashboardProps) {
   const { isSimulating, history, dataLoading, dataError, retryData } = useTelehealth();
   const [hardware, setHardware] = useState<HardwareReading | null>(null);
   const [now, setNow] = useState(0);
@@ -90,6 +91,10 @@ export function PatientDashboard({ user, telemetry, appointments, prescriptions,
         <Plus size={17} />Book a consultation
       </button>
     </div>
+
+    {/* Superadmin Emergency SOS Hotline Banner */}
+    <EmergencySOS onOpenModal={onEmergencySOS} />
+
     <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
       <section className="relative overflow-hidden rounded-3xl bg-teal-800 p-6 text-white shadow-sm sm:p-7">
         <span className="absolute -right-10 -top-10 size-56 rounded-full border-[35px] border-white/5" aria-hidden="true" />

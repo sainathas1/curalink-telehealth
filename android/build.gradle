@@ -22,6 +22,8 @@ allprojects {
         google()
         mavenCentral()
     }
+    // Redirect build outputs outside of OneDrive to avoid Windows/OneDrive ReparsePoint snapshot errors
+    layout.buildDirectory = file("${System.getProperty('java.io.tmpdir')}/gradle-builds/curalink/${project.name}")
 }
 
 task clean(type: Delete) {

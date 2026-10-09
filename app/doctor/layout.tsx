@@ -81,6 +81,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   let activeTab: DoctorTab = 'clinical-queue';
   if (pathname.includes('/doctor/ward')) activeTab = 'ward-telemetry';
   else if (pathname.includes('/doctor/patients')) activeTab = 'patient-directory';
+  else if (pathname.includes('/doctor/records')) activeTab = 'records';
   else if (pathname.includes('/doctor/ehr')) activeTab = 'ehr-prescribe';
   else if (pathname.includes('/doctor/iot-hub')) activeTab = 'hardware-hub';
 
@@ -91,6 +92,9 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         break;
       case 'patient-directory':
         router.push('/doctor/patients');
+        break;
+      case 'records':
+        router.push('/doctor/records');
         break;
       case 'ehr-prescribe':
         router.push('/doctor/ehr');

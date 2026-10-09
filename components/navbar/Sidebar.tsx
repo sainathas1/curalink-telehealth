@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export type PatientTab = 'overview' | 'vitals' | 'device' | 'appointments' | 'prescriptions' | 'records' | 'profile';
-export type DoctorTab = 'clinical-queue' | 'ward-telemetry' | 'patient-directory' | 'ehr-prescribe' | 'hardware-hub';
+export type DoctorTab = 'clinical-queue' | 'ward-telemetry' | 'patient-directory' | 'records' | 'ehr-prescribe' | 'hardware-hub';
 export type ActiveTab = PatientTab | DoctorTab;
 
 interface SidebarProps {
@@ -57,6 +57,7 @@ export function Sidebar({
     { id: 'clinical-queue', label: 'Clinical Queue', icon: <Video className="w-5 h-5" />, badge: 'Today' },
     { id: 'ward-telemetry', label: 'Ward Telemetry', icon: <Activity className="w-5 h-5" />, badge: activeAlertCount > 0 ? `${activeAlertCount} Alert` : undefined },
     { id: 'patient-directory', label: 'Patient Directory', icon: <Users className="w-5 h-5" /> },
+    { id: 'records', label: 'Medical Records', icon: <FileText className="w-5 h-5" /> },
     { id: 'ehr-prescribe', label: 'EHR Workspace', icon: <Stethoscope className="w-5 h-5" /> },
     { id: 'hardware-hub', label: 'IoT Hardware Hub', icon: <Cpu className="w-5 h-5" /> },
   ];

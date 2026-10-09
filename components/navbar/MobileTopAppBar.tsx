@@ -44,6 +44,7 @@ export function MobileTopAppBar({
     if (pathname.includes('/patient/device')) return 'Connected Devices';
     if (pathname.includes('/patient/prescriptions')) return 'Prescriptions & Rx';
     if (pathname.includes('/patient/records')) return 'Medical Records';
+    if (pathname.includes('/doctor/records')) return 'Medical Records & Vault';
     return 'CuraLink Health';
   };
 

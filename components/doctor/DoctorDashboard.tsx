@@ -32,6 +32,7 @@ import {
   X,
   FileText,
   ClipboardList,
+  Download,
 } from 'lucide-react';
 
 interface DoctorDashboardProps {
@@ -68,6 +69,7 @@ export function DoctorDashboard({
   const [liveAppointments, setLiveAppointments] = useState<Appointment[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<Record<string, any>>({});
   const [hasFetchedLiveApts, setHasFetchedLiveApts] = useState(false);
+  const [patientRecords, setPatientRecords] = useState<any[]>([]);
 
   // Doctor Read Fix:
   // Fetch appointments using ONLY this simple query: query(collection(db, 'appointments'), where('doctorId', '==', currentUser.uid))
@@ -194,8 +196,78 @@ export function DoctorDashboard({
       (err) => console.warn('Doctor dashboard live patient user onSnapshot notice:', err)
     );
 
+    // Real-time listener for patient's clinical_records / diagnostic attachments
+    const recsQuery = query(
+      collection(db, 'clinical_records'),
+      where('patientId', '==', selectedPatient.id)
+    );
+    const unsubRecs = onSnapshot(
+      recsQuery,
+      (snapshot) => {
+        const docs = snapshot.docs.map((d) => {
+          const data = d.data();
+          const content = data.content || {};
+          return {
+            id: d.id,
+            title:
+              data['Document Title'] ||
+              data.documentTitle ||
+              data.title ||
+              content.title ||
+              'Clinical Document',
+            type:
+              data['Record Type'] ||
+              data.recordType ||
+              data.type ||
+              content.type ||
+              'Lab Report',
+            notes:
+              data.notes ||
+              data['Notes'] ||
+              data.clinicalSummary ||
+              data['Clinical Summary'] ||
+              data.summary ||
+              content.notes ||
+              content.summary ||
+              '',
+            facility:
+              data.facility ||
+              data['Facility'] ||
+              content.facility ||
+              'CuraLink Diagnostics',
+            date: data.createdAt?.toDate
+              ? data.createdAt.toDate().toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : content.date || 'Recent',
+            fileData:
+              data.fileData ||
+              content.fileData ||
+              data.downloadUrl ||
+              content.downloadUrl,
+            downloadUrl:
+              data.downloadUrl ||
+              content.downloadUrl ||
+              data.fileData ||
+              content.fileData,
+            createdAt: data.createdAt,
+          };
+        });
+        docs.sort((a: any, b: any) => {
+          const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+          const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+          return timeB - timeA;
+        });
+        setPatientRecords(docs);
+      },
+      (err) => console.warn('Doctor dashboard clinical_records listener notice:', err)
+    );
+
     return () => {
       unsubscribe();
+      unsubRecs();
       setIsLiveListening(false);
     };
   }, [selectedPatient?.id]);
@@ -1095,6 +1167,122 @@ export function DoctorDashboard({
                       ? patientProfiles[selectedPatient.id]?.currentMedications
                       : 'No data provided'}
                 </p>
+              </div>
+
+              {/* Patient's Uploaded Medical Records & Diagnostic Vault (Base64 View) */}
+              <div className="p-4 rounded-2xl bg-teal-50/50 border border-teal-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-teal-600" />
+                    <span className="font-bold text-slate-900 text-xs">
+                      Uploaded Diagnostic Records ({patientRecords.length})
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-teal-700 bg-white px-2 py-0.5 rounded-full border border-teal-200">
+                    Base64 EHR Vault
+                  </span>
+                </div>
+
+                {patientRecords.length === 0 ? (
+                  <p className="text-xs text-slate-500 bg-white p-3 rounded-xl border border-teal-100 text-center">
+                    No clinical documents or diagnostics uploaded by this patient yet.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {patientRecords.map((rec) => {
+                      const isImg =
+                        rec.fileData?.startsWith('data:image/') ||
+                        rec.type === 'Imaging' ||
+                        /\.(png|jpe?g|gif|webp|svg)$/i.test(rec.title);
+                      const isPdf =
+                        rec.fileData?.startsWith('data:application/pdf') ||
+                        /\.pdf$/i.test(rec.title);
+
+                      return (
+                        <div
+                          key={rec.id}
+                          className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2.5"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
+                                {rec.type}
+                              </span>
+                              <h5 className="font-bold text-slate-900 text-xs mt-1.5">{rec.title}</h5>
+                              <p className="text-[11px] text-slate-400">
+                                {rec.facility} • {rec.date}
+                              </p>
+                            </div>
+
+                            {rec.fileData && (
+                              <a
+                                href={rec.fileData}
+                                download={`${rec.title.replace(/\s+/g, '_')}${isPdf && !rec.title.endsWith('.pdf') ? '.pdf' : ''}`}
+                                className="p-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 transition-colors"
+                                title="Download File"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+
+                          {rec.notes && (
+                            <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                              {rec.notes}
+                            </p>
+                          )}
+
+                          {/* Base64 Data URL Display */}
+                          {rec.fileData && (
+                            <div className="pt-2 border-t border-slate-100">
+                              {isImg ? (
+                                <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 p-2 flex items-center justify-center">
+                                  {/* Image render: <img src={record.fileData} /> */}
+                                  <img
+                                    src={rec.fileData}
+                                    alt={rec.title}
+                                    className="max-h-60 w-full object-contain rounded-lg"
+                                  />
+                                </div>
+                              ) : isPdf ? (
+                                <div className="space-y-1.5">
+                                  <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-100 h-52">
+                                    {/* PDF render: <iframe src={record.fileData} /> or clickable download link */}
+                                    <iframe
+                                      src={rec.fileData}
+                                      className="w-full h-full border-0"
+                                      title={rec.title}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-[11px] text-slate-500">PDF Document</span>
+                                    <a
+                                      href={rec.fileData}
+                                      download={`${rec.title.replace(/\s+/g, '_')}.pdf`}
+                                      className="text-teal-700 font-bold hover:underline inline-flex items-center gap-1 text-xs"
+                                    >
+                                      <Download className="w-3 h-3" />
+                                      <span>Clickable download link</span>
+                                    </a>
+                                  </div>
+                                </div>
+                              ) : (
+                                <a
+                                  href={rec.fileData}
+                                  download={rec.title}
+                                  className="text-xs text-teal-700 font-bold hover:underline inline-flex items-center gap-1"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Download Attachment</span>
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 

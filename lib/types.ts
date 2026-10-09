@@ -107,24 +107,31 @@ export interface MedicalRecord {
   id: string;
   patientId: string;
   date: string;
-  type: 'Lab Report' | 'Clinical Summary' | 'Radiology' | 'Discharge Summary';
+  type: 'Lab Report' | 'Clinical Summary' | 'Radiology' | 'Discharge Summary' | string;
   title: string;
   doctorName: string;
   facility: string;
   fileSize: string;
   summary: string;
+  notes?: string;
   downloadUrl?: string;
+  fileData?: string;
 }
 
 export interface ClinicalRecord {
   id: string;
   patientId: string;
-  doctorId: string;
+  doctorId?: string;
   doctorName?: string;
   patientName?: string;
   type: 'Prescription' | 'Clinical Note' | 'Medical Record' | 'Lab Report' | string;
   content: any;
   createdAt?: any;
+  fileData?: string;
+  downloadUrl?: string;
+  documentTitle?: string;
+  recordType?: string;
+  notes?: string;
 }
 
 export interface PatientDirectoryItem {

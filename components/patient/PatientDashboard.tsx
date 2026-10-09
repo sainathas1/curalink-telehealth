@@ -125,7 +125,7 @@ export function PatientDashboard({
         id: r.id,
         patientId: r.patientId,
         patientName: r.patientName || user?.fullName || 'Patient',
-        doctorId: r.doctorId,
+        doctorId: r.doctorId || 'doc_attending',
         doctorName: r.doctorName || 'Attending Physician',
         doctorLicense: c.doctorLicense || 'MED-LICENSED',
         medicationName: c.medicationName || 'Prescription',

@@ -2,8 +2,7 @@
 
 import React, { useState } from 'react';
 import { MedicalRecord } from '../../lib/types';
-import { db, storage } from '../../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db } from '../../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useTelehealth } from '../../context/TelehealthContext';
 import {
@@ -67,109 +66,141 @@ export function MedicalRecordsList({
     setUploadError(null);
 
     try {
-      const uid = currentUser?.uid || patientId || 'patient_user';
-      // Exact storage reference pattern
-      const fileRef = ref(storage, `documents/${uid}/${file.name}-${Date.now()}`);
+      // Base64 Workaround: Use JavaScript FileReader
+      const reader = new FileReader();
 
-      // 1. Upload physical file to Firebase Storage
-      await uploadBytes(fileRef, file);
+      reader.onload = async () => {
+        try {
+          const base64String = reader.result as string;
+          const uid = currentUser?.uid || patientId || 'patient_user';
+          const formattedDate = new Date().toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+          const fileSizeStr =
+            file.size > 1024 * 1024
+              ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+              : `${Math.max(1, Math.round(file.size / 1024))} KB`;
 
-      // 2. Retrieve secure URL
-      const downloadUrl = await getDownloadURL(fileRef);
+          const docTitle = newTitle || file.name;
+          const docNotes = newSummary || 'Uploaded clinical diagnostics document.';
 
-      const formattedDate = new Date().toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-      const fileSizeStr =
-        file.size > 1024 * 1024
-          ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-          : `${Math.max(1, Math.round(file.size / 1024))} KB`;
-
-      // 3. Save downloadUrl, Document Title, Record Type, Facility, and Clinical Summary to clinical_records Firestore collection
-      const clinicalRecordDoc = {
-        patientId: uid,
-        patientName: patientName || currentUser?.fullName || 'Patient',
-        downloadUrl,
-        documentTitle: newTitle || file.name,
-        recordType: newType,
-        facility: newFacility,
-        clinicalSummary: newSummary || 'Uploaded clinical diagnostics document.',
-        'Document Title': newTitle || file.name,
-        'Record Type': newType,
-        'Facility': newFacility,
-        'Clinical Summary': newSummary || 'Uploaded clinical diagnostics document.',
-        type: newType,
-        title: newTitle || file.name,
-        doctorName: 'Attending Physician',
-        content: {
-          title: newTitle || file.name,
-          facility: newFacility,
-          summary: newSummary || 'Uploaded clinical diagnostics document.',
-          downloadUrl,
-          fileSize: fileSizeStr,
-          date: formattedDate,
-        },
-        createdAt: serverTimestamp(),
-      };
-
-      await addDoc(collection(db, 'clinical_records'), clinicalRecordDoc);
-
-      // Also mirror write to medical_records for universal dashboard sync across real-time listeners
-      try {
-        await addDoc(collection(db, 'medical_records'), {
-          patientId: uid,
-          patientName: patientName || currentUser?.fullName || 'Patient',
-          type: newType,
-          downloadUrl,
-          content: {
-            title: newTitle || file.name,
+          // Save directly into the clinical_records Firestore collection using addDoc
+          // alongside Document Title, Record Type, and Notes
+          const clinicalRecordDoc = {
+            patientId: uid,
+            patientName: patientName || currentUser?.fullName || 'Patient',
+            fileData: base64String,
+            downloadUrl: base64String,
+            'Document Title': docTitle,
+            'Record Type': newType,
+            'Notes': docNotes,
+            documentTitle: docTitle,
+            recordType: newType,
+            notes: docNotes,
             facility: newFacility,
-            summary: newSummary || 'Uploaded clinical diagnostics document.',
-            downloadUrl,
-            fileSize: fileSizeStr,
-            date: formattedDate,
-          },
-          createdAt: serverTimestamp(),
-        });
-      } catch (mirrorErr) {
-        console.warn('medical_records mirror write notice:', mirrorErr);
-      }
+            clinicalSummary: docNotes,
+            title: docTitle,
+            type: newType,
+            doctorName: 'Attending Physician',
+            content: {
+              title: docTitle,
+              facility: newFacility,
+              summary: docNotes,
+              notes: docNotes,
+              fileData: base64String,
+              downloadUrl: base64String,
+              fileSize: fileSizeStr,
+              date: formattedDate,
+            },
+            createdAt: serverTimestamp(),
+          };
 
-      const newRec: MedicalRecord = {
-        id: `rec_${Date.now()}`,
-        patientId: uid,
-        date: formattedDate,
-        type: newType,
-        title: newTitle || file.name,
-        doctorName: 'Attending Physician',
-        facility: newFacility,
-        fileSize: fileSizeStr,
-        summary: newSummary || 'Uploaded clinical diagnostics document.',
-        downloadUrl,
+          await addDoc(collection(db, 'clinical_records'), clinicalRecordDoc);
+
+          // Mirror write to medical_records for universal real-time listener sync
+          try {
+            await addDoc(collection(db, 'medical_records'), {
+              patientId: uid,
+              patientName: patientName || currentUser?.fullName || 'Patient',
+              type: newType,
+              title: docTitle,
+              fileData: base64String,
+              downloadUrl: base64String,
+              notes: docNotes,
+              'Document Title': docTitle,
+              'Record Type': newType,
+              'Notes': docNotes,
+              facility: newFacility,
+              content: {
+                title: docTitle,
+                facility: newFacility,
+                summary: docNotes,
+                notes: docNotes,
+                fileData: base64String,
+                downloadUrl: base64String,
+                fileSize: fileSizeStr,
+                date: formattedDate,
+              },
+              createdAt: serverTimestamp(),
+            });
+          } catch (mirrorErr) {
+            console.warn('medical_records mirror write notice:', mirrorErr);
+          }
+
+          const newRec: MedicalRecord = {
+            id: `rec_${Date.now()}`,
+            patientId: uid,
+            date: formattedDate,
+            type: newType,
+            title: docTitle,
+            doctorName: 'Attending Physician',
+            facility: newFacility,
+            fileSize: fileSizeStr,
+            summary: docNotes,
+            notes: docNotes,
+            fileData: base64String,
+            downloadUrl: base64String,
+          };
+
+          onUploadRecord(newRec);
+
+          setIsSaving(false);
+          setUploadSuccess(true);
+
+          // Close modal and reset form
+          setTimeout(() => {
+            setUploadSuccess(false);
+            setIsUploadOpen(false);
+            setNewTitle('');
+            setNewSummary('');
+            setFile(null);
+            setNewFacility('CuraLink Diagnostics');
+            setNewType('Lab Report');
+            setUploadError(null);
+          }, 1000);
+        } catch (saveErr: any) {
+          console.error('Firestore save error:', saveErr);
+          alert(saveErr?.message || String(saveErr));
+          setUploadError(saveErr?.message || 'Failed to save record to Firestore.');
+          setIsSaving(false);
+        }
       };
 
-      onUploadRecord(newRec);
+      reader.onerror = (readErr) => {
+        console.error('FileReader error:', readErr);
+        alert('Failed to read file as Data URL.');
+        setUploadError('Failed to read selected file into Base64 format.');
+        setIsSaving(false);
+      };
 
-      setIsSaving(false);
-      setUploadSuccess(true);
-
-      // Close the modal and clear the form automatically on success
-      setTimeout(() => {
-        setUploadSuccess(false);
-        setIsUploadOpen(false);
-        setNewTitle('');
-        setNewSummary('');
-        setFile(null);
-        setNewFacility('CuraLink Diagnostics');
-        setNewType('Lab Report');
-        setUploadError(null);
-      }, 1000);
+      // Read file as Data URL (Base64)
+      reader.readAsDataURL(file);
     } catch (error: any) {
-      console.error(error);
+      console.error('Upload initiation error:', error);
       alert(error?.message || String(error));
-      setUploadError(error?.message || 'Failed to upload document to secure storage. Please try again.');
+      setUploadError(error?.message || 'Failed to process document attachment.');
       setIsSaving(false);
     }
   };
@@ -332,6 +363,75 @@ export function MedicalRecordsList({
                   <p className="font-semibold text-slate-800 mt-0.5">{selectedRecord.fileSize}</p>
                 </div>
               </div>
+
+              {/* Base64 Document Preview (Image or PDF) */}
+              {(selectedRecord.fileData || selectedRecord.downloadUrl) && (
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <p className="font-bold text-slate-800 text-[11px] uppercase tracking-wider">
+                    Attached Document Preview
+                  </p>
+                  {(() => {
+                    const dataUrl = selectedRecord.fileData || selectedRecord.downloadUrl || '';
+                    const isImg =
+                      dataUrl.startsWith('data:image/') ||
+                      selectedRecord.type === 'Imaging' ||
+                      /\.(png|jpe?g|gif|webp|svg)$/i.test(selectedRecord.title);
+                    const isPdf =
+                      dataUrl.startsWith('data:application/pdf') ||
+                      /\.pdf$/i.test(selectedRecord.title);
+
+                    if (isImg) {
+                      return (
+                        <div className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center p-2">
+                          <img
+                            src={dataUrl}
+                            alt={selectedRecord.title}
+                            className="max-h-72 w-full object-contain rounded-xl"
+                          />
+                        </div>
+                      );
+                    }
+
+                    if (isPdf) {
+                      return (
+                        <div className="space-y-2">
+                          <div className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-100">
+                            <iframe
+                              src={dataUrl}
+                              className="w-full h-72 border-0"
+                              title={selectedRecord.title}
+                            />
+                          </div>
+                          <a
+                            href={dataUrl}
+                            download={`${selectedRecord.title.replace(/\s+/g, '_')}.pdf`}
+                            className="inline-flex items-center gap-1.5 text-xs text-teal-700 font-bold hover:underline"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download PDF Document</span>
+                          </a>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                        <span className="text-xs text-slate-700 truncate font-medium">
+                          {selectedRecord.title}
+                        </span>
+                        <a
+                          href={dataUrl}
+                          download={selectedRecord.title}
+                          className="text-xs text-teal-700 font-bold hover:underline inline-flex items-center gap-1"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download</span>
+                        </a>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
                 <button

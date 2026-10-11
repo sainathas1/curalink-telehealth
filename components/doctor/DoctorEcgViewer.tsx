@@ -1047,7 +1047,10 @@ export function DoctorEcgViewer({
     }, 100);
 
     try {
-      const response = await fetch('/api/analyze-ecg', {
+      const baseUrl = (process.env.NEXT_PUBLIC_API_URL || '').trim().replace(/\/+$/, '');
+      const endpoint = baseUrl ? `${baseUrl}/api/analyze-ecg` : '/api/analyze-ecg';
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

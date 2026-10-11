@@ -15,7 +15,7 @@ interface MobileTopAppBarProps {
 export function MobileTopAppBar({ currentUser, telemetry, onEmergencySOS, onOpenDrawer }: MobileTopAppBarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const screenTitles: Record<string, string> = { vitals: 'Health monitoring', appointments: 'Appointments', profile: 'My profile', device: 'Connected devices', prescriptions: 'Prescriptions', records: 'Medical records' };
+  const screenTitles: Record<string, string> = { vitals: 'Health monitoring', appointments: 'Appointments', profile: 'My profile', prescriptions: 'Prescriptions', records: 'Medical records' };
   const route = pathname.split('/')[2];
   const title = screenTitles[route] || 'Your care';
   const isConnected = telemetry.sensorConnected;

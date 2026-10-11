@@ -15,7 +15,6 @@ const explicitlyProtected = [
   'lib/firebase.ts',
   'hooks/useTelemetry.ts',
   'lib/iot-service.ts',
-  'app/patient/device/page.tsx',
 ];
 
 function git(args, allowedStatuses = [0]) {

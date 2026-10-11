@@ -169,7 +169,7 @@ export function ArchitectureFlow3D() {
             </Link>
 
             <Link
-              href="/patient/device"
+              href="/patient/vitals"
               className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs text-center border border-white/10 flex items-center justify-center gap-2"
             >
               <Radio className="w-4 h-4 text-emerald-400" />

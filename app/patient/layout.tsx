@@ -20,7 +20,6 @@ import { initNativeBridge } from '../../lib/nativeBridge';
 const patientRoutes: Record<PatientTab, string> = {
   overview: '/patient/dashboard',
   vitals: '/patient/vitals',
-  device: '/patient/device',
   appointments: '/patient/appointments',
   prescriptions: '/patient/prescriptions',
   records: '/patient/records',

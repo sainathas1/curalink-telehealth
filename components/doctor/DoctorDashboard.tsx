@@ -2,12 +2,13 @@
 
 import { useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Calendar, CheckCircle2, Clock, FileText, LoaderCircle, Plus, Users, Video } from 'lucide-react';
+import { Activity, ArrowRight, Calendar, CheckCircle2, Clock, FileText, LoaderCircle, Plus, Users, Video } from 'lucide-react';
 import type { UserProfile, Appointment, LiveTelemetryPayload, PatientDirectoryItem } from '../../lib/types';
 import type { DoctorTab } from '../navbar/Sidebar';
 import { useTelehealth } from '../../context/TelehealthContext';
 import { formatAppointmentDate } from '../patient/BookAppointmentModal';
 import { activeAppointmentStatuses, ClinicalNoteDialog, clinicDate, normalizeWorkspaceRecords, WorkspaceDataNotice } from './DoctorWorkspaceSupport';
+import { DoctorEcgViewer } from './DoctorEcgViewer';
 
 interface DoctorDashboardProps {
   doctor: UserProfile;
@@ -25,6 +26,7 @@ export function DoctorDashboard({ doctor, onNavigateTab, onStartVideoCall, onOpe
   const [updatingId, setUpdatingId] = useState('');
   const [error, setError] = useState('');
   const [notePatient, setNotePatient] = useState<{ id: string; name: string } | null>(null);
+  const [viewingEcgAppointment, setViewingEcgAppointment] = useState<{ id: string; patientName: string } | null>(null);
   const updatingRef = useRef(false);
   const safeQueue = doctorAppointmentsQueue || [];
   const safeDirectory = patientDirectory || [];
@@ -194,6 +196,14 @@ export function DoctorDashboard({ doctor, onNavigateTab, onStartVideoCall, onOpe
                       </button>
                       <button
                         type="button"
+                        onClick={() => setViewingEcgAppointment({ id: appointment.id, patientName })}
+                        className="min-h-10 rounded-lg border border-teal-200/90 bg-teal-50/70 px-3 text-xs font-semibold text-teal-800 transition-all hover:bg-teal-100/80 hover:border-teal-300 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-teal-700 flex items-center gap-1.5"
+                      >
+                        <Activity size={14} className="text-teal-700 shrink-0" aria-hidden="true" />
+                        ECG Waveforms
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => onOpenEHR(patientName, appointment.patientId)}
                         className="min-h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition-all hover:border-teal-200 hover:bg-teal-50 hover:text-teal-800 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-teal-700"
                       >
@@ -230,6 +240,34 @@ export function DoctorDashboard({ doctor, onNavigateTab, onStartVideoCall, onOpe
 
         {/* Sidebar panels */}
         <div className="space-y-4">
+          <section className="care-card p-5 border-teal-100 bg-gradient-to-br from-teal-50/40 to-white">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <Activity size={16} className="text-teal-700" />
+                <span>Patient ECG Strips</span>
+              </h2>
+              <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-mono font-bold text-teal-800">
+                AD8232
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Review calibrated 10-second ECG waveforms and diagnostic strips captured by patients.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setViewingEcgAppointment({
+                  id: safeQueue[0]?.id || '',
+                  patientName: safeQueue[0]?.patientName || 'Assigned Patient',
+                })
+              }
+              className="mt-4 flex min-h-11 w-full items-center justify-between rounded-xl bg-teal-700 px-4 text-xs font-semibold text-white transition-colors hover:bg-teal-800 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-teal-700 shadow-sm"
+            >
+              Launch ECG Oscilloscope
+              <ArrowRight size={15} aria-hidden="true" />
+            </button>
+          </section>
+
           <section className="care-card p-5">
             <h2 className="text-sm font-semibold text-slate-900">Keep care moving</h2>
             <p className="mt-2 text-xs leading-relaxed text-slate-400">Review a patient's history before your next consultation.</p>
@@ -311,6 +349,15 @@ export function DoctorDashboard({ doctor, onNavigateTab, onStartVideoCall, onOpe
 
       {notePatient && (
         <ClinicalNoteDialog key={notePatient.id} patient={notePatient} onClose={() => setNotePatient(null)} />
+      )}
+
+      {viewingEcgAppointment && (
+        <DoctorEcgViewer
+          appointmentId={viewingEcgAppointment.id}
+          patientName={viewingEcgAppointment.patientName}
+          isOpen={true}
+          onClose={() => setViewingEcgAppointment(null)}
+        />
       )}
     </div>
   );

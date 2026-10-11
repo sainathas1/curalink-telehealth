@@ -20,7 +20,6 @@ import {
   Volume2,
   VolumeX,
   Thermometer,
-  Usb,
   FileText,
   Pill,
   Sparkles,
@@ -455,16 +454,16 @@ export default function PatientProfileRoute() {
 
         <div className="bg-white rounded-3xl border border-slate-200/80 divide-y divide-slate-100 shadow-xs overflow-hidden">
           <button
-            onClick={() => router.push('/patient/device')}
+            onClick={() => router.push('/patient/vitals')}
             className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-50 transition-colors m3-pressable cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center">
-                <Usb className="w-5 h-5" />
+                <Activity className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-sm font-bold text-slate-900 block">Connected Devices</span>
-                <span className="text-xs text-slate-500">USB Serial Thermometer & Biosensor</span>
+                <span className="text-sm font-bold text-slate-900 block">Health Monitoring</span>
+                <span className="text-xs text-slate-500">Live ECG waveforms & telemetry</span>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400" />

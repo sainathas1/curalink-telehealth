@@ -238,7 +238,7 @@ export function LandingHeader({
               Patient Health Portal
             </Link>
             <Link
-              href="/patient/device"
+              href="/patient/vitals"
               onClick={() => setIsMobileMenuOpen(false)}
               className="w-full py-2.5 rounded-xl bg-teal-900/40 text-teal-300 border border-teal-500/30 text-center text-xs font-bold flex items-center justify-center gap-2"
             >

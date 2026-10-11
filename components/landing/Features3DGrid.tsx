@@ -100,7 +100,7 @@ const FEATURES: FeatureItem[] = [
       'Plug any micro-controller, Arduino, or medical sensor directly into your USB port. Read baud streams right in your browser.',
     metrics: 'Chrome & Edge Native Support',
     actionText: 'Connect USB Device',
-    actionHref: '/patient/device',
+    actionHref: '/patient/vitals',
     colorScheme: 'amber',
   },
 ];

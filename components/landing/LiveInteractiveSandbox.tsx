@@ -282,7 +282,7 @@ export function LiveInteractiveSandbox() {
                 <h4 className="text-base font-bold text-white">ESP32 USB / BLE</h4>
                 <p className="text-xs text-slate-300">Skin Temp: 36.8°C • Synced to Cloud</p>
                 <div className="text-[11px] font-mono text-cyan-400 pt-2 border-t border-white/5">
-                  <Link href="/patient/device" className="hover:underline">
+                  <Link href="/patient/vitals" className="hover:underline">
                     Connect USB Device →
                   </Link>
                 </div>
@@ -303,7 +303,7 @@ export function LiveInteractiveSandbox() {
               </div>
 
               <Link
-                href="/patient/device"
+                href="/patient/vitals"
                 className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 self-start"
               >
                 <span>Launch Serial Terminal</span>

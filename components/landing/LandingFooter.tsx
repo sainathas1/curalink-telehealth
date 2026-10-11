@@ -93,7 +93,7 @@ export function LandingFooter() {
               </Link>
             </li>
             <li>
-              <Link href="/patient/device" className="hover:text-teal-400 transition-colors">
+              <Link href="/patient/vitals" className="hover:text-teal-400 transition-colors">
                 Connect USB Sensor
               </Link>
             </li>

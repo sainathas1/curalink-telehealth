@@ -1,10 +1,10 @@
 import {
-  Activity, Calendar, Cpu, FileText, LayoutDashboard, Link, Pill,
+  Activity, Calendar, Cpu, FileText, LayoutDashboard, Pill,
   Stethoscope, User, Users, Video, type LucideIcon,
 } from 'lucide-react';
 import type { UserRole } from '../../lib/types';
 
-export type PatientTab = 'overview' | 'vitals' | 'device' | 'appointments' | 'prescriptions' | 'records' | 'profile';
+export type PatientTab = 'overview' | 'vitals' | 'appointments' | 'prescriptions' | 'records' | 'profile';
 export type DoctorTab = 'clinical-queue' | 'ward-telemetry' | 'patient-directory' | 'records' | 'ehr-prescribe' | 'hardware-hub' | 'profile';
 export type ActiveTab = PatientTab | DoctorTab;
 
@@ -22,7 +22,6 @@ const patientItems: NavigationItem[] = [
   { id: 'vitals', label: 'Health monitoring', mobileLabel: 'Vitals', icon: Activity },
   { id: 'prescriptions', label: 'Prescriptions', icon: Pill },
   { id: 'records', label: 'Medical records', icon: FileText },
-  { id: 'device', label: 'Connected devices', icon: Link },
   { id: 'profile', label: 'My profile', mobileLabel: 'Profile', icon: User },
 ];
 

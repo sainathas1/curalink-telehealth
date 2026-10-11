@@ -139,8 +139,8 @@ export function PatientDashboard({ user, telemetry, appointments, prescriptions,
             {savedHardware?.temperature !== null && savedHardware ? `Your last temperature reading from ${savedHardware.deviceModel || 'connected device'} is saved to your profile.` : 'Connect a supported device to bring your health readings into view.'}
           </p>
         </div>
-        <button type="button" onClick={() => onNavigateTab('device')} className="mt-5 flex min-h-11 items-center justify-between rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-teal-800 transition-all hover:bg-teal-50 active:scale-[0.98]">
-          {savedHardware?.temperature !== null && savedHardware ? 'Manage my device' : 'Connect my device'}
+        <button type="button" onClick={() => onNavigateTab('vitals')} className="mt-5 flex min-h-11 items-center justify-between rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-teal-800 transition-all hover:bg-teal-50 active:scale-[0.98]">
+          {savedHardware?.temperature !== null && savedHardware ? 'View health vitals' : 'Health monitoring'}
           <ArrowRight size={17} />
         </button>
       </section>

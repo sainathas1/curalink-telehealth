@@ -45,11 +45,13 @@ export default function ConnectedDevicesPage() {
   const [authLoading, setAuthLoading] = useState<boolean>(true);
 
   // Serial & Sensor State
-  const [isSerialSupported, setIsSerialSupported] = useState<boolean>(false);
+  const [isSerialSupported, setIsSerialSupported] = useState<boolean>(() => {
+    return typeof navigator !== 'undefined' && 'serial' in navigator;
+  });
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [port, setPort] = useState<any>(null);
   const [reader, setReader] = useState<any>(null);
-  const [baudRate, setBaudRate] = useState<number>(115200);
+  const [baudRate, setBaudRate] = useState<number>(9600);
   const [currentTemperature, setCurrentTemperature] = useState<number>(36.8);
   const [rawLogs, setRawLogs] = useState<string[]>([]);
   const [autoSync, setAutoSync] = useState<boolean>(false);
@@ -62,13 +64,6 @@ export default function ConnectedDevicesPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const logsEndRef = useRef<HTMLDivElement | null>(null);
-
-  // Check Web Serial support
-  useEffect(() => {
-    if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && 'serial' in navigator) {
-      setIsSerialSupported(true);
-    }
-  }, []);
 
   // Listen to Auth & Firestore User doc in real-time
   useEffect(() => {

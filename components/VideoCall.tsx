@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Copy, Check, Video, Loader2 } from 'lucide-react';
 import { useTelehealth } from '../context/TelehealthContext';
+import PatientHealthDeviceConnector from './iot/PatientHealthDeviceConnector';
+import PatientVitalsCard from './doctor/PatientVitalsCard';
 
 const JitsiMeeting = dynamic(() => import('@jitsi/react-sdk').then(module => module.JitsiMeeting), {
   ssr: false,
@@ -34,6 +36,7 @@ export default function VideoCall({ roomName, userName, showInviteControls = fal
       setCopied(true); setCopyError('');
     } catch { setCopyError('We could not copy the link. You can copy this page address from your browser.'); }
   }
+  const resolvedAppointmentId = appointment?.id || appointmentId || '';
   return (
     <div className={`w-full flex flex-col ${className}`}>
       {showInviteControls && (
@@ -44,6 +47,20 @@ export default function VideoCall({ roomName, userName, showInviteControls = fal
             {copied ? 'Link copied' : 'Copy appointment link'}
           </button>
           {copyError && <p role="alert" className="w-full text-xs text-rose-700">{copyError}</p>}
+        </div>
+      )}
+
+      {/* Patient Health Device USB Connector */}
+      {!isDoctor && resolvedAppointmentId && (
+        <div className="mb-3">
+          <PatientHealthDeviceConnector appointmentId={resolvedAppointmentId} isPatient={!isDoctor} />
+        </div>
+      )}
+
+      {/* Doctor Live Patient Vitals Card */}
+      {isDoctor && resolvedAppointmentId && (
+        <div className="mb-3">
+          <PatientVitalsCard appointmentId={resolvedAppointmentId} />
         </div>
       )}
       <div className="w-full h-[calc(100vh-80px)] min-h-[500px] flex flex-col relative overflow-hidden rounded-2xl bg-slate-950 shadow-inner">

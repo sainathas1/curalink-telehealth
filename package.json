@@ -11,6 +11,7 @@
     "clean": "next clean"
   },
   "dependencies": {
+    "@awesome-cordova-plugins/serial": "npm:@ionic-native/serial@^5.36.0",
     "@capacitor/android": "^8.5.3",
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.3",
@@ -20,12 +21,14 @@
     "@daily-co/daily-js": "^0.93.0",
     "@google/genai": "^2.4.0",
     "@hookform/resolvers": "^5.2.1",
+    "@ionic-native/core": "^5.36.0",
     "@jitsi/react-sdk": "^1.4.4",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",
     "autoprefixer": "^10.4.21",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cordova-plugin-serial": "^0.0.3",
     "firebase": "^12.19.0",
     "framer-motion": "^14.0.0",
     "lucide-react": "^0.553.0",
@@ -36,6 +39,7 @@
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "recharts": "^3.10.1",
+    "rxjs": "^7.8.2",
     "tailwind-merge": "^3.7.0",
     "three": "^0.186.1"
   },

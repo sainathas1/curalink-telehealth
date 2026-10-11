@@ -23,9 +23,73 @@ export function ESP32GuideModal({
   onClose,
   patientId = 'patient_sarah_jenkins_01',
 }: ESP32GuideModalProps) {
+  const [activeTab, setActiveTab] = useState<'usb' | 'wifi'>('usb');
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
+
+  const arduinoUsbSnippet = `// ========================================================
+// CuraLink Telehealth - AD8232 ECG Sensor Arduino Firmware
+// Streams JSON {"ecg": 512, "bpm": 75, "leadsOff": false}
+// Baud Rate: 115200 Baud | Sampling Rate: 50 Hz (20ms loop)
+// Pins: OUTPUT -> A0, LO+ -> Pin 10, LO- -> Pin 11, SDN -> None
+// ========================================================
+
+const int ECG_PIN = A0;   // Analog input connected to AD8232 OUTPUT
+const int LO_PLUS = 10;   // Leads-off detect positive
+const int LO_MINUS = 11;  // Leads-off detect negative
+
+// R-peak detection variables for real-time BPM estimation
+unsigned long lastBeatTime = 0;
+int currentBpm = 75;
+int threshold = 620;      // Dynamic threshold above baseline ~512
+bool peakDetected = false;
+
+void setup() {
+  // Serial baud rate MUST be 115200 for high-frequency ECG streaming
+  Serial.begin(115200);
+  while (!Serial && millis() < 3000) { delay(10); }
+
+  pinMode(LO_PLUS, INPUT);   // Leads off detection LO+
+  pinMode(LO_MINUS, INPUT);  // Leads off detection LO-
+}
+
+void loop() {
+  // Check if electrodes are disconnected (leads off)
+  bool leadsOff = (digitalRead(LO_PLUS) == 1) || (digitalRead(LO_MINUS) == 1);
+
+  int ecgRaw = 512;
+  if (!leadsOff) {
+    ecgRaw = analogRead(ECG_PIN); // ADC reading: 0 to 1023 (centered ~512)
+
+    // Simple peak detection for BPM calculation
+    unsigned long now = millis();
+    if (ecgRaw > threshold && !peakDetected) {
+      if (lastBeatTime > 0) {
+        unsigned long interval = now - lastBeatTime;
+        if (interval > 300 && interval < 1500) { // 40 to 200 BPM range
+          currentBpm = (int)(60000.0 / interval);
+        }
+      }
+      lastBeatTime = now;
+      peakDetected = true;
+    } else if (ecgRaw < (threshold - 40)) {
+      peakDetected = false;
+    }
+  }
+
+  // Emits JSON payload 50 times per second (50Hz):
+  // {"ecg": 512, "bpm": 75, "leadsOff": false}
+  Serial.print("{\\"ecg\\": ");
+  Serial.print(ecgRaw);
+  Serial.print(", \\"bpm\\": ");
+  Serial.print(currentBpm);
+  Serial.print(", \\"leadsOff\\": ");
+  Serial.print(leadsOff ? "true" : "false");
+  Serial.println("}");
+
+  delay(20); // 20ms delay = 50 samples per second
+}`;
 
   const esp32CodeSnippet = `// ========================================================
 // CuraLink Telehealth - ESP32 IoT Biomedical Node Firmware
@@ -42,6 +106,9 @@ export function ESP32GuideModal({
 
 const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
+
+// Firestore / Realtime Database Telemetry Endpoint
+const char* telemetryEndpoint = "https://firestore.googleapis.com/v1/projects/YOUR_PROJECT_ID/databases/(default)/documents/telemetry/${patientId}";
 
 // Firestore / Realtime Database Telemetry Endpoint
 const char* telemetryEndpoint = "https://firestore.googleapis.com/v1/projects/YOUR_PROJECT_ID/databases/(default)/documents/telemetry/${patientId}";
@@ -182,13 +249,41 @@ void loop() {
 
           {/* C++ Code Snippet */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
-                <Code2 className="w-4 h-4 text-teal-600" />
-                <span>Arduino C++ Firmware (ESP32)</span>
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 p-1 border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('usb')}
+                  className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                    activeTab === 'usb'
+                      ? 'bg-white text-teal-800 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  AD8232 USB Serial (115200)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('wifi')}
+                  className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                    activeTab === 'wifi'
+                      ? 'bg-white text-teal-800 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  ESP32 WiFi Cloud
+                </button>
+              </div>
+
               <button
-                onClick={handleCopy}
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    activeTab === 'usb' ? arduinoUsbSnippet : esp32CodeSnippet
+                  );
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
                 className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
@@ -196,8 +291,8 @@ void loop() {
               </button>
             </div>
 
-            <pre className="p-4 rounded-2xl bg-slate-950 text-slate-200 font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-800">
-              <code>{esp32CodeSnippet}</code>
+            <pre className="p-4 rounded-2xl bg-slate-950 text-slate-200 font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-800 max-h-72">
+              <code>{activeTab === 'usb' ? arduinoUsbSnippet : esp32CodeSnippet}</code>
             </pre>
           </div>
         </div>

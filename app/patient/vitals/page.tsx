@@ -8,24 +8,28 @@ export default function PatientVitalsRoute() {
   const {
     telemetry,
     history,
-    temperatureUnit,
-    toggleTemperatureUnit,
     audioAlertsEnabled,
     setAudioAlertsEnabled,
     openSimulator,
     isSimulating,
+    activeCallAppointment,
+    patientAppointments,
   } = useTelehealth();
+
+  const appointmentId =
+    activeCallAppointment?.id ||
+    patientAppointments[0]?.id ||
+    'live-telemetry';
 
   return (
     <VitalsMonitor
       telemetry={telemetry}
       history={history}
-      temperatureUnit={temperatureUnit}
-      onToggleTempUnit={toggleTemperatureUnit}
       audioAlertsEnabled={audioAlertsEnabled}
       onToggleAudio={() => setAudioAlertsEnabled(!audioAlertsEnabled)}
       onOpenSimulator={openSimulator}
       isSimulating={isSimulating}
+      appointmentId={appointmentId}
     />
   );
 }

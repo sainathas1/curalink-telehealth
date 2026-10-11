@@ -532,11 +532,13 @@ export function VitalsMonitor({
       if (!current) return;
 
       try {
+        const recentSamples = (ecgPointsRef.current || []).slice(-120).map((p) => p.ecg);
         await setDoc(
           doc(db, 'appointments', resolvedAppointmentId, 'telemetry', 'live'),
           {
             bpm: current.bpm,
             leadsOff: current.leadsOff,
+            samples: recentSamples,
             timestamp: serverTimestamp(),
           },
           { merge: true }

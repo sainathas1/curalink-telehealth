@@ -258,11 +258,12 @@ export function DoctorEcgViewer({
   const [aiAnalysisTimestamp, setAiAnalysisTimestamp] = useState<string | null>(null);
   const [copiedAiText, setCopiedAiText] = useState<boolean>(false);
 
-  // Live Patient Telemetry Stream (BPM & Leads Off from appointments/{selectedAppointmentId}/telemetry/live)
+  // Live Patient Telemetry Stream (strictly received from appointments/{selectedAppointmentId}/telemetry)
   const [liveTelemetry, setLiveTelemetry] = useState<{
-    bpm: number;
+    bpm: number | null;
     leadsOff: boolean;
     timestamp?: any;
+    samples?: number[];
   } | null>(null);
   const [isLiveActive, setIsLiveActive] = useState<boolean>(false);
   const [lastLiveReceivedAt, setLastLiveReceivedAt] = useState<number | null>(null);
@@ -362,80 +363,99 @@ export function DoctorEcgViewer({
     }
   }, [selectedAppointmentId]);
 
-  // Real-time Firestore Listener for live patient telemetry: appointments/{selectedAppointmentId}/telemetry/live
+  // Real-time Firestore Listener for live patient telemetry: pointed at appointments/{selectedAppointmentId}/telemetry
   useEffect(() => {
     if (!selectedAppointmentId) {
       setLiveTelemetry(null);
       setIsLiveActive(false);
+      livePointsRef.current = new Array(120).fill(512);
       return;
     }
 
-    try {
-      const liveDocRef = doc(db, 'appointments', selectedAppointmentId, 'telemetry', 'live');
-      const unsub = onSnapshot(
-        liveDocRef,
-        (snapshot) => {
-          if (snapshot.exists()) {
-            const data = snapshot.data();
-            const parsedBpm =
-              typeof data.bpm === 'number'
-                ? data.bpm
-                : typeof data.bpm === 'string'
-                ? parseFloat(data.bpm)
-                : 0;
+    let isSubscribed = true;
 
-            const parsedLeadsOff =
-              typeof data.leadsOff === 'boolean'
-                ? data.leadsOff
-                : typeof data.leadsOff === 'string'
-                ? data.leadsOff === 'true'
-                : false;
+    // Helper to process telemetry data from Firestore onSnapshot
+    const handleTelemetryData = (data: any) => {
+      if (!data || !isSubscribed) return;
 
-            setLiveTelemetry({
-              bpm: parsedBpm,
-              leadsOff: parsedLeadsOff,
-              timestamp: data.timestamp,
-            });
-            setLastLiveReceivedAt(Date.now());
-            setIsLiveActive(true);
-          }
-        },
-        (err) => {
-          console.warn('DoctorEcgViewer live telemetry notice:', err.message);
+      const parsedBpm =
+        typeof data.bpm === 'number' && !isNaN(data.bpm)
+          ? data.bpm
+          : typeof data.bpm === 'string' && !isNaN(parseFloat(data.bpm))
+          ? parseFloat(data.bpm)
+          : null;
+
+      const parsedLeadsOff =
+        typeof data.leadsOff === 'boolean'
+          ? data.leadsOff
+          : typeof data.leadsOff === 'string'
+          ? data.leadsOff === 'true'
+          : false;
+
+      const waveformSamples = Array.isArray(data.samples)
+        ? data.samples
+        : Array.isArray(data.ecgWaveform)
+        ? data.ecgWaveform
+        : null;
+
+      if (waveformSamples && waveformSamples.length > 0) {
+        livePointsRef.current = waveformSamples.slice(-120);
+        setLiveRawAdc(Math.round(waveformSamples[waveformSamples.length - 1]));
+      } else if (typeof data.rawAdc === 'number' && !isNaN(data.rawAdc)) {
+        livePointsRef.current.push(data.rawAdc);
+        if (livePointsRef.current.length > 120) livePointsRef.current.shift();
+        setLiveRawAdc(Math.round(data.rawAdc));
+      }
+
+      setLiveTelemetry({
+        bpm: parsedBpm,
+        leadsOff: parsedLeadsOff,
+        timestamp: data.timestamp,
+        samples: waveformSamples || undefined,
+      });
+      setLastLiveReceivedAt(Date.now());
+      setIsLiveActive(true);
+    };
+
+    // 1. Primary listener: collection(db, 'appointments', selectedAppointmentId, 'telemetry')
+    const telemetryColRef = collection(db, 'appointments', selectedAppointmentId, 'telemetry');
+    const unsubCol = onSnapshot(
+      telemetryColRef,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const liveDoc = snapshot.docs.find((d) => d.id === 'live') || snapshot.docs[0];
+          handleTelemetryData(liveDoc.data());
+        } else {
+          setLiveTelemetry(null);
+          setIsLiveActive(false);
+          livePointsRef.current = new Array(120).fill(512);
         }
-      );
+      },
+      (err) => {
+        console.warn('DoctorEcgViewer telemetry collection listener notice:', err.message);
+      }
+    );
 
-      return () => unsub();
-    } catch (err) {
-      console.warn('DoctorEcgViewer live telemetry setup error:', err);
-    }
+    // 2. Direct document listener for appointments/{selectedAppointmentId}/telemetry/live
+    const liveDocRef = doc(db, 'appointments', selectedAppointmentId, 'telemetry', 'live');
+    const unsubDoc = onSnapshot(
+      liveDocRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          handleTelemetryData(snapshot.data());
+        }
+      },
+      (err) => {
+        console.warn('DoctorEcgViewer live doc listener notice:', err.message);
+      }
+    );
+
+    return () => {
+      isSubscribed = false;
+      unsubCol();
+      unsubDoc();
+    };
   }, [selectedAppointmentId]);
-
-  // Heartbeat check: determines whether patient is actively transmitting live data
-  useEffect(() => {
-    if (!liveTelemetry) return;
-    const timer = setInterval(() => {
-      let tsMillis = lastLiveReceivedAt;
-      if (liveTelemetry?.timestamp) {
-        if (typeof liveTelemetry.timestamp.toMillis === 'function') {
-          tsMillis = liveTelemetry.timestamp.toMillis();
-        } else if (typeof liveTelemetry.timestamp.seconds === 'number') {
-          tsMillis = liveTelemetry.timestamp.seconds * 1000;
-        } else if (liveTelemetry.timestamp instanceof Date) {
-          tsMillis = liveTelemetry.timestamp.getTime();
-        }
-      }
-
-      if (tsMillis) {
-        const diffSecs = (Date.now() - tsMillis) / 1000;
-        setIsLiveActive(diffSecs <= 6);
-      } else {
-        setIsLiveActive(false);
-      }
-    }, 1500);
-
-    return () => clearInterval(timer);
-  }, [liveTelemetry, lastLiveReceivedAt]);
 
   // Requirement 2: Live ECG Oscilloscope CRT Renderer for Doctor
   const drawLiveOscilloscope = useCallback(() => {
@@ -492,7 +512,7 @@ export function DoctorEcgViewer({
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // 3. Draw Live Waveform Points
+    // 3. Draw Live Waveform Points (strictly from Firebase onSnapshot)
     const points = livePointsRef.current;
     if (points.length > 1) {
       const isLeadsOff = Boolean(liveTelemetry?.leadsOff);
@@ -555,7 +575,7 @@ export function DoctorEcgViewer({
       ctx.fillStyle = '#fca5a5';
       ctx.fillText('Isoelectric flatline rendered. Check RA / LA / RL lead contact.', width / 2, centerY + 12);
       ctx.restore();
-    } else if (!isLiveActive) {
+    } else if (!isLiveActive || !liveTelemetry) {
       ctx.save();
       ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
       ctx.fillRect(0, 0, width, height);
@@ -566,7 +586,7 @@ export function DoctorEcgViewer({
       ctx.fillText('AWAITING PATIENT TELEMETRY STREAM', width / 2, centerY - 10);
       ctx.font = '11px ui-monospace, monospace';
       ctx.fillStyle = '#475569';
-      ctx.fillText(`Listening to appointments/${selectedAppointmentId}/telemetry/live`, width / 2, centerY + 14);
+      ctx.fillText(`Listening to appointments/${selectedAppointmentId}/telemetry`, width / 2, centerY + 14);
       ctx.restore();
     }
 
@@ -579,73 +599,20 @@ export function DoctorEcgViewer({
     ctx.fillText('SPEED: 25mm/s · GAIN: 10mm/mV · NOTCH: 50Hz', width - 10, height - 10);
   }, [liveTelemetry, isLiveActive, selectedAppointmentId]);
 
-  // High-performance 50Hz live animation loop for Doctor Live Monitor
+  // Live Oscilloscope CRT render loop (strictly renders livePointsRef updated by onSnapshot)
   useEffect(() => {
     if (activeScreen !== 'live') {
       if (liveAnimIdRef.current) cancelAnimationFrame(liveAnimIdRef.current);
       return;
     }
 
-    const MAX_LIVE_POINTS = 120; // 120 samples = ~2.4 seconds rolling window
+    const MAX_LIVE_POINTS = 120;
     if (livePointsRef.current.length === 0) {
       livePointsRef.current = new Array(MAX_LIVE_POINTS).fill(512);
     }
 
-    let lastTick = performance.now();
-
-    const renderLoop = (now: number) => {
-      const delta = now - lastTick;
-      if (delta >= 20) { // 50Hz = 20ms step
-        liveSampleCounterRef.current += 1;
-        const currentBpm = liveTelemetry?.bpm || 75;
-        const isLeadsOff = Boolean(liveTelemetry?.leadsOff);
-
-        let sampleVal = 512;
-        if (isLeadsOff) {
-          sampleVal = 512 + (Math.random() * 2 - 1);
-        } else if (isLiveActive) {
-          // Morphologically accurate Lead I cardiac cycle synchronized to patient's exact BPM
-          const samplesPerBeat = Math.max(15, Math.round((60 / Math.max(30, currentBpm)) * 50));
-          const phase = (liveSampleCounterRef.current % samplesPerBeat) / samplesPerBeat;
-
-          if (phase >= 0.10 && phase < 0.20) {
-            // P-wave
-            const pPhase = (phase - 0.10) / 0.10;
-            sampleVal = 512 + Math.sin(pPhase * Math.PI) * 28;
-          } else if (phase >= 0.28 && phase < 0.32) {
-            // Q-wave dip
-            const qPhase = (phase - 0.28) / 0.04;
-            sampleVal = 512 - Math.sin(qPhase * Math.PI) * 45;
-          } else if (phase >= 0.32 && phase < 0.38) {
-            // R-wave sharp peak
-            const rPhase = (phase - 0.32) / 0.06;
-            sampleVal = 512 + Math.sin(rPhase * Math.PI) * 310;
-          } else if (phase >= 0.38 && phase < 0.44) {
-            // S-wave dip
-            const sPhase = (phase - 0.38) / 0.06;
-            sampleVal = 512 - Math.sin(sPhase * Math.PI) * 85;
-          } else if (phase >= 0.55 && phase < 0.72) {
-            // T-wave dome
-            const tPhase = (phase - 0.55) / 0.17;
-            sampleVal = 512 + Math.sin(tPhase * Math.PI) * 60;
-          } else {
-            // Isoelectric baseline + subtle analog baseline wander
-            sampleVal = 512 + Math.sin(liveSampleCounterRef.current * 0.1) * 3;
-          }
-        } else {
-          sampleVal = 512 + Math.sin(liveSampleCounterRef.current * 0.05) * 2;
-        }
-
-        livePointsRef.current.push(sampleVal);
-        if (livePointsRef.current.length > MAX_LIVE_POINTS) {
-          livePointsRef.current.shift();
-        }
-
-        setLiveRawAdc(Math.round(sampleVal));
-        drawLiveOscilloscope();
-        lastTick = now;
-      }
-
+    const renderLoop = () => {
+      drawLiveOscilloscope();
       liveAnimIdRef.current = requestAnimationFrame(renderLoop);
     };
 
@@ -654,7 +621,7 @@ export function DoctorEcgViewer({
     return () => {
       if (liveAnimIdRef.current) cancelAnimationFrame(liveAnimIdRef.current);
     };
-  }, [activeScreen, isLiveActive, liveTelemetry, drawLiveOscilloscope]);
+  }, [activeScreen, drawLiveOscilloscope]);
 
   // DOM Ref for AI Analysis Box to scroll into view
   const aiAnalysisContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1065,10 +1032,15 @@ export function DoctorEcgViewer({
         }),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`Failed to analyze ECG with Gemini (${response.status}): ${errorText || 'Server error'}`);
+      }
+
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to analyze ECG with Gemini.');
+      if (!data || (!data.success && !data.analysis)) {
+        throw new Error(data?.error || 'Failed to analyze ECG with Gemini.');
       }
 
       const analysisText = typeof data.analysis === 'string' ? data.analysis : String(data.analysis || '');
@@ -1181,7 +1153,7 @@ export function DoctorEcgViewer({
                   }`}
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  LIVE STREAM: {Math.round(liveTelemetry.bpm)} BPM ·{' '}
+                  LIVE STREAM: {liveTelemetry.bpm ? `${Math.round(liveTelemetry.bpm)} BPM` : 'ACTIVE'} ·{' '}
                   {liveTelemetry.leadsOff ? 'LEADS OFF' : 'LEADS ATTACHED'}
                 </span>
               )}

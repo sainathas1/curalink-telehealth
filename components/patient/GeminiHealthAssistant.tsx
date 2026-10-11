@@ -59,10 +59,13 @@ export function GeminiHealthAssistant({
         }),
       });
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error('AI Summary unavailable');
+      }
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Unable to load health summary right now.');
+      const data = await response.json();
+      if (!data || !data.summary) {
+        throw new Error('AI Summary unavailable');
       }
 
       setSummary(data.summary);
@@ -72,17 +75,8 @@ export function GeminiHealthAssistant({
         new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       );
     } catch (err: any) {
-      console.warn('Gemini Health Assistant summary notice:', err.message);
-      // Fallback friendly summary
-      if (activePrescriptions.length > 0) {
-        setSummary(
-          `You have ${activePrescriptions.length} active prescription${activePrescriptions.length > 1 ? 's' : ''} to take today, and your health records are securely stored on your profile.`
-        );
-      } else {
-        setSummary(
-          'Your health space is up to date and your clinical care team is ready whenever you need a consultation.'
-        );
-      }
+      console.warn('Gemini Health Assistant summary notice:', err?.message);
+      setSummary('AI Summary unavailable');
     } finally {
       setIsLoading(false);
     }

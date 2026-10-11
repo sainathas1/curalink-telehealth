@@ -415,12 +415,13 @@ export function PatientHealthDeviceConnector({
       if (!current) return;
 
       try {
-        // Only write bpm, leadsOff, and serverTimestamp once every 2 seconds
+        const recentSamples = (ecgBufferRef.current || []).slice(-120).map((p) => p.ecg);
         await setDoc(
           doc(db, 'appointments', appointmentId, 'telemetry', 'live'),
           {
             bpm: current.bpm,
             leadsOff: current.leadsOff,
+            samples: recentSamples,
             timestamp: serverTimestamp(),
           },
           { merge: true }

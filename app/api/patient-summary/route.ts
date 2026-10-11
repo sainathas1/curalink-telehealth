@@ -80,10 +80,7 @@ Instructions:
         : 'Welcome back! Your health profile and medical records are up to date and ready whenever you need them.');
 
     return NextResponse.json({
-      success: true,
       summary: summaryText,
-      activePrescriptionCount: activePrescriptions.length,
-      recordCount: safeRecords.length,
     });
   } catch (err: any) {
     console.error('Error in /api/patient-summary:', err);

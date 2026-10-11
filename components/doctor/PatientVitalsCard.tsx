@@ -224,9 +224,14 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
         }),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`Failed to analyze ECG with Gemini (${response.status}): ${errorText || 'Server error'}`);
+      }
+
       const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to analyze ECG with Gemini.');
+      if (!data || (!data.success && !data.analysis)) {
+        throw new Error(data?.error || 'Failed to analyze ECG with Gemini.');
       }
 
       setModalAiAnalysis(data.analysis);

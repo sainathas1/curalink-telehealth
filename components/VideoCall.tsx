@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Copy, Check, Video, Loader2 } from 'lucide-react';
@@ -21,6 +21,22 @@ export default function VideoCall({ roomName, userName, showInviteControls = fal
   const { currentUser, isLoading, dataLoading, dataError, retryData, patientAppointments, doctorAppointmentsQueue } = useTelehealth();
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState('');
+
+  // Proactively request browser/native WebRTC permissions so Capacitor Android WebView triggers prompt
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({ audio: true, video: true })
+        .then((stream) => {
+          // Release initial probe tracks so Jitsi can acquire them cleanly
+          stream.getTracks().forEach((track) => track.stop());
+        })
+        .catch((err) => {
+          console.warn('[VideoCall] Native media devices check notice:', err?.message);
+        });
+    }
+  }, []);
+
   const isDoctor = currentUser?.role?.toLowerCase() === 'doctor';
   const appointmentId = roomName?.startsWith('CuraLink-') ? roomName.slice('CuraLink-'.length) : roomName;
   const appointment = [...patientAppointments, ...doctorAppointmentsQueue].find(item => item.id === appointmentId &&
@@ -68,31 +84,74 @@ export default function VideoCall({ roomName, userName, showInviteControls = fal
           domain="meet.jit.si"
           roomName={`CuraLink-${appointment.id}`}
           configOverwrite={{
-            startWithAudioMuted: true,
-            startWithVideoMuted: true,
+            startWithAudioMuted: false,
+            startWithVideoMuted: false,
             prejoinPageEnabled: true,
             disableDeepLinking: true,
             enableClosePage: false,
             disableInviteFunctions: true,
+            // Explicitly allow and enable media capture
+            disableAudioLevels: false,
+            enableNoAudioDetection: true,
+            enableNoisyMicDetection: true,
+            constraints: {
+              video: {
+                height: { ideal: 720, max: 720, min: 240 },
+              },
+            },
           }}
           interfaceConfigOverwrite={{
             SHOW_JITSI_WATERMARK: false,
             SHOW_WATERMARK_FOR_GUESTS: false,
             DEFAULT_REMOTE_DISPLAY_NAME: 'Care team participant',
+            TOOLBAR_BUTTONS: [
+              'microphone',
+              'camera',
+              'closedcaptions',
+              'desktop',
+              'fullscreen',
+              'fodeviceselection',
+              'hangup',
+              'chat',
+              'raisehand',
+              'videoquality',
+              'filmstrip',
+              'tileview',
+            ],
           }}
           userInfo={{
             displayName: userName || currentUser.fullName,
             email: currentUser.email,
           }}
           onReadyToClose={onLeave}
-          getIFrameRef={(iframe) => {
-            iframe.style.width = '100%';
-            iframe.style.height = '100%';
-            iframe.style.border = '0';
-            iframe.style.position = 'absolute';
-            iframe.style.inset = '0';
-            iframe.setAttribute('title', 'CuraLink video consultation');
-            iframe.setAttribute('allow', 'camera; microphone; display-capture; autoplay; clipboard-write; screen-wake-lock');
+          onApiReady={(externalApi) => {
+            try {
+              const iframe = externalApi?.getIFrame?.() as HTMLIFrameElement | null;
+              if (iframe) {
+                iframe.setAttribute('allow', 'camera; microphone; fullscreen; display-capture; autoplay');
+                iframe.allow = 'camera; microphone; fullscreen; display-capture; autoplay';
+              }
+            } catch (err) {
+              console.warn('[VideoCall] onApiReady iframe setup notice:', err);
+            }
+          }}
+          getIFrameRef={(element) => {
+            if (!element) return;
+            const iframe = element.tagName?.toLowerCase() === 'iframe'
+              ? (element as HTMLIFrameElement)
+              : element.querySelector('iframe');
+            const target = iframe || element;
+            target.style.width = '100%';
+            target.style.height = '100%';
+            target.style.border = '0';
+            target.style.position = 'absolute';
+            target.style.inset = '0';
+            target.setAttribute('title', 'CuraLink video consultation');
+            target.setAttribute('allow', 'camera; microphone; fullscreen; display-capture; autoplay');
+            if (iframe) {
+              iframe.setAttribute('allow', 'camera; microphone; fullscreen; display-capture; autoplay');
+              iframe.allow = 'camera; microphone; fullscreen; display-capture; autoplay';
+            }
           }}
         />
       </div>

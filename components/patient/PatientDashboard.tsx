@@ -82,9 +82,12 @@ export function PatientDashboard({ user, telemetry, appointments, prescriptions,
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500">A little clarity for your everyday care.</p>
       </div>
-      <button type="button" onClick={() => onNavigateTab('appointments')} className="care-button self-start transition-all active:scale-[0.98]">
-        <Plus size={17} />Book a consultation
-      </button>
+      <div className="flex flex-wrap items-center gap-3 self-start">
+        <EmergencySOS variant="compact" onOpenModal={onEmergencySOS} />
+        <button type="button" onClick={() => onNavigateTab('appointments')} className="care-button transition-all active:scale-[0.98]">
+          <Plus size={17} />Book a consultation
+        </button>
+      </div>
     </div>
 
     {/* Gemini Health Assistant Widget */}
@@ -94,9 +97,6 @@ export function PatientDashboard({ user, telemetry, appointments, prescriptions,
       patientName={firstName}
       onNavigateTab={onNavigateTab}
     />
-
-    {/* Superadmin Emergency SOS Hotline Banner */}
-    <EmergencySOS onOpenModal={onEmergencySOS} />
 
     <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
       <section className="relative overflow-hidden rounded-3xl bg-teal-800 p-6 text-white shadow-sm sm:p-7">

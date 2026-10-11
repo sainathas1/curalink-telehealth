@@ -44,10 +44,7 @@ export function GeminiHealthAssistant({
     setError(null);
 
     try {
-      const baseUrl = (process.env.NEXT_PUBLIC_API_URL || '').trim().replace(/\/+$/, '');
-      const endpoint = baseUrl ? `${baseUrl}/api/patient-summary` : '/api/patient-summary';
-
-      const response = await fetch(endpoint, {
+      const response = await fetch('/api/patient-summary', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

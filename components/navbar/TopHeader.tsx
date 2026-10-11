@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Bell, Cpu, HeartPulse, LogOut, Menu, Sliders, Stethoscope, User } from 'lucide-react';
+import { Bell, HeartPulse, LogOut, Menu, Stethoscope, User } from 'lucide-react';
 import type { UserProfile, UserRole, LiveTelemetryPayload } from '../../lib/types';
 import { getNavigation, type ActiveTab } from './navigation';
 import { MobileDrawer } from './MobileDrawer';
@@ -14,8 +14,8 @@ interface TopHeaderProps {
   onOpenAuth: () => void;
   telemetry: LiveTelemetryPayload;
   isSimulating: boolean;
-  onToggleSimulatorDrawer: () => void;
-  onOpenHardwareGuide: () => void;
+  onToggleSimulatorDrawer?: () => void;
+  onOpenHardwareGuide?: () => void;
   activeCriticalAlertsCount?: number;
   activeTab?: ActiveTab;
   onSelectTab?: (tab: ActiveTab) => void;
@@ -40,8 +40,9 @@ export function TopHeader({ currentUser, role, onLogout, onOpenAuth, telemetry, 
             <div className="min-w-0 lg:ml-0"><p className="truncate text-sm font-semibold text-slate-800">{title || (isDoctor ? 'Doctor portal' : 'Patient portal')}</p><p className="mt-0.5 hidden text-[11px] text-slate-400 lg:block">{isDoctor ? 'Your connected clinical workspace' : 'Your health, all in one place'}</p></div>
           </div>
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            <div className="hidden items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-500 xl:flex"><span className={`h-1.5 w-1.5 rounded-full ${isSimulating ? 'bg-amber-500' : telemetry.sensorConnected ? 'bg-teal-500' : 'bg-slate-300'}`} aria-hidden="true" />{isSimulating ? 'Demo readings' : telemetry.sensorConnected ? 'Device connected' : 'Device offline'}{hasReadings && <span className="border-l border-slate-200 pl-2 text-slate-700">{telemetry.heartRate} bpm</span>}</div>
-            {isDoctor && <div className="hidden items-center gap-1 md:flex"><button type="button" onClick={onToggleSimulatorDrawer} aria-label="Open sensor simulator" title="Sensor simulator" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-teal-700 focus-visible:outline-2 focus-visible:outline-teal-600"><Sliders size={18} aria-hidden="true" /></button><button type="button" onClick={onOpenHardwareGuide} aria-label="Open device setup guide" title="Device setup guide" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-teal-700 focus-visible:outline-2 focus-visible:outline-teal-600"><Cpu size={18} aria-hidden="true" /></button></div>}
+            {!isDoctor && (
+              <div className="hidden items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-500 xl:flex"><span className={`h-1.5 w-1.5 rounded-full ${isSimulating ? 'bg-amber-500' : telemetry.sensorConnected ? 'bg-teal-500' : 'bg-slate-300'}`} aria-hidden="true" />{isSimulating ? 'Demo readings' : telemetry.sensorConnected ? 'Device connected' : 'Device offline'}{hasReadings && <span className="border-l border-slate-200 pl-2 text-slate-700">{telemetry.heartRate} bpm</span>}</div>
+            )}
             <span className="hidden items-center gap-1.5 rounded-full bg-slate-50 px-3 py-1.5 text-[11px] font-medium text-slate-500 lg:flex">{isDoctor ? <Stethoscope size={13} aria-hidden="true" /> : <User size={13} aria-hidden="true" />}{isDoctor ? 'Doctor' : 'Patient'}</span>
             {activeCriticalAlertsCount > 0 && <button type="button" aria-label={`View ${activeCriticalAlertsCount} critical alerts`} onClick={() => onSelectTab?.(isDoctor ? 'ward-telemetry' : 'vitals')} className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600 focus-visible:outline-2 focus-visible:outline-rose-600"><Bell size={18} aria-hidden="true" /><span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] text-white">{activeCriticalAlertsCount}</span></button>}
             {!isDoctor && (

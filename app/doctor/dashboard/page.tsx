@@ -37,9 +37,6 @@ export default function DoctorDashboardRoute() {
       case 'ehr-prescribe':
         router.push('/doctor/ehr');
         break;
-      case 'hardware-hub':
-        router.push('/doctor/iot-hub');
-        break;
       default:
         break;
     }

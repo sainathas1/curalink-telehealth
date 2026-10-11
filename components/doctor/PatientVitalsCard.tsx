@@ -8,6 +8,7 @@ import {
   onSnapshot,
   serverTimestamp,
   addDoc,
+  updateDoc,
   collection,
   query,
   orderBy,
@@ -37,6 +38,8 @@ import {
   Eye,
   X,
   LineChart as LineChartIcon,
+  Sparkles,
+  Copy,
 } from 'lucide-react';
 
 export interface PatientVitalsCardProps {
@@ -64,6 +67,8 @@ interface SavedReadingItem {
   durationSeconds?: number;
   sampleCount?: number;
   samplingRateHz?: number;
+  aiAnalysis?: string;
+  aiAnalyzedAt?: any;
 }
 
 const MAX_ECG_POINTS = 100; // Real-time scrolling window: last 100 ecg values
@@ -104,6 +109,13 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
   // Saved 10-Second Readings & Waveform Viewer for Clinician
   const [savedReadings, setSavedReadings] = useState<SavedReadingItem[]>([]);
   const [viewingReading, setViewingReading] = useState<SavedReadingItem | null>(null);
+
+  // Gemini AI Pre-Screening State for Saved Readings
+  const [analyzingReadingId, setAnalyzingReadingId] = useState<string | null>(null);
+  const [modalAiAnalysis, setModalAiAnalysis] = useState<string | null>(null);
+  const [modalAiLoading, setModalAiLoading] = useState<boolean>(false);
+  const [modalAiError, setModalAiError] = useState<string | null>(null);
+  const [copiedAi, setCopiedAi] = useState<boolean>(false);
 
   // State array of the last 100 ecg values for recharts real-time scrolling Line Chart
   const [ecgData, setEcgData] = useState<ECGPoint[]>(() =>
@@ -175,6 +187,70 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
       console.warn('Doctor saved readings setup error:', err);
     }
   }, [appointmentId]);
+
+  // Sync AI analysis when viewing reading changes
+  useEffect(() => {
+    if (viewingReading) {
+      setModalAiAnalysis(viewingReading.aiAnalysis || null);
+      setModalAiError(null);
+    } else {
+      setModalAiAnalysis(null);
+      setModalAiError(null);
+    }
+  }, [viewingReading]);
+
+  const handleAnalyzeReading = async (targetReading?: SavedReadingItem | null) => {
+    const readingToAnalyze = targetReading || viewingReading;
+    if (!readingToAnalyze || !readingToAnalyze.ecgWaveform || readingToAnalyze.ecgWaveform.length === 0) {
+      setModalAiError('No waveform data available to analyze.');
+      return;
+    }
+
+    setViewingReading(readingToAnalyze);
+    setAnalyzingReadingId(readingToAnalyze.id);
+    setModalAiLoading(true);
+    setModalAiError(null);
+
+    try {
+      const response = await fetch('/api/analyze-ecg', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ecgWaveform: readingToAnalyze.ecgWaveform,
+          bpm: readingToAnalyze.bpm,
+          durationSeconds: readingToAnalyze.durationSeconds || 10,
+          samplingRateHz: readingToAnalyze.samplingRateHz || 50,
+          leadType: 'Lead I (AD8232)',
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to analyze ECG with Gemini.');
+      }
+
+      setModalAiAnalysis(data.analysis);
+
+      // Persist to Firestore
+      if (appointmentId && readingToAnalyze.id) {
+        try {
+          const docRef = doc(db, 'appointments', appointmentId, 'saved_readings', readingToAnalyze.id);
+          await updateDoc(docRef, {
+            aiAnalysis: data.analysis,
+            aiAnalyzedAt: serverTimestamp(),
+          });
+        } catch (dbErr) {
+          console.warn('Could not persist AI analysis:', dbErr);
+        }
+      }
+    } catch (err: any) {
+      console.error('Error analyzing ECG with Gemini:', err);
+      setModalAiError(err.message || 'Failed to connect to Gemini AI.');
+    } finally {
+      setModalAiLoading(false);
+      setAnalyzingReadingId(null);
+    }
+  };
 
   /**
    * Start 10-Second Recording Capture
@@ -868,25 +944,53 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
               return (
                 <div
                   key={reading.id}
-                  className="rounded-xl border border-slate-200 bg-white p-3 flex items-center justify-between shadow-2xs hover:shadow-xs transition"
+                  className="rounded-xl border border-slate-200 bg-white p-3 flex flex-col gap-2.5 shadow-2xs hover:shadow-xs transition"
                 >
-                  <div>
-                    <span className="text-[10px] font-mono text-slate-500">{dateStr}</span>
-                    <div className="flex items-baseline gap-1 mt-0.5">
-                      <span className="text-lg font-black font-mono text-slate-900">
-                        {reading.bpm}
-                      </span>
-                      <span className="text-[10px] font-bold text-rose-600">BPM</span>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-500">{dateStr}</span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-lg font-black font-mono text-slate-900">
+                          {reading.bpm}
+                        </span>
+                        <span className="text-[10px] font-bold text-rose-600">BPM</span>
+                      </div>
                     </div>
+                    {reading.aiAnalysis && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        <Sparkles className="size-2.5 text-indigo-600" />
+                        AI Ready
+                      </span>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setViewingReading(reading)}
-                    className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-slate-800 transition cursor-pointer"
-                  >
-                    <Eye className="size-3 text-teal-400" />
-                    <span>View Graph</span>
-                  </button>
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setViewingReading(reading)}
+                      className="inline-flex items-center justify-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      <Eye className="size-3 text-teal-400" />
+                      <span>View</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAnalyzeReading(reading)}
+                      disabled={modalAiLoading}
+                      className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-teal-600 via-indigo-600 to-purple-600 px-2 py-1.5 text-[10px] font-bold text-white hover:opacity-90 transition cursor-pointer disabled:opacity-50"
+                    >
+                      {analyzingReadingId === reading.id ? (
+                        <>
+                          <RefreshCw className="size-3 animate-spin" />
+                          <span>Analyzing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="size-3 text-amber-300" />
+                          <span>Ask Gemini: Draft Analysis</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -924,7 +1028,7 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
               </button>
             </div>
 
-            <div className="p-5 space-y-3 overflow-y-auto">
+            <div className="p-5 space-y-4 overflow-y-auto">
               <div className="rounded-2xl border border-slate-900 bg-slate-950 p-4">
                 <div className="mb-2 flex items-center justify-between text-[10px] font-mono text-slate-400">
                   <span className="text-emerald-400 font-bold">10.0s CONTINUOUS WAVEFORM</span>
@@ -963,6 +1067,120 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
+              </div>
+
+              {/* Gemini AI Clinical Pre-Screening Summary Box Right Below the Graph */}
+              <div className="rounded-2xl border border-indigo-500/30 bg-gradient-to-b from-indigo-950/30 via-slate-900/80 to-slate-950 p-5 space-y-3 text-white">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="size-4 text-indigo-400 animate-pulse" />
+                    <div>
+                      <h5 className="text-xs font-bold font-mono text-white flex items-center gap-2">
+                        AI Clinical Pre-Screening
+                        <span className="rounded bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-mono text-indigo-300 border border-indigo-500/30">
+                          Gemini 3.8 Flash
+                        </span>
+                      </h5>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {modalAiAnalysis && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!modalAiAnalysis) return;
+                          await navigator.clipboard.writeText(modalAiAnalysis);
+                          setCopiedAi(true);
+                          setTimeout(() => setCopiedAi(false), 2500);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition cursor-pointer"
+                      >
+                        {copiedAi ? (
+                          <>
+                            <CheckCircle2 className="size-3 text-emerald-400" />
+                            <span className="text-emerald-400">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="size-3 text-slate-400" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleAnalyzeReading(viewingReading)}
+                      disabled={modalAiLoading}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-teal-500 via-indigo-600 to-purple-600 px-3 py-1.5 text-xs font-bold text-white shadow-md transition disabled:opacity-50 cursor-pointer"
+                    >
+                      {modalAiLoading ? (
+                        <>
+                          <RefreshCw className="size-3 animate-spin" />
+                          <span>Analyzing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="size-3 text-amber-300" />
+                          <span>{modalAiAnalysis ? 'Re-Analyze with Gemini' : 'Ask Gemini: Draft Analysis'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {modalAiLoading ? (
+                  <div className="py-6 text-center space-y-2 animate-pulse">
+                    <RefreshCw className="size-5 animate-spin mx-auto text-indigo-400" />
+                    <p className="text-xs font-semibold text-indigo-200">
+                      Analyzing 500-Sample Waveform Array with Gemini AI...
+                    </p>
+                  </div>
+                ) : modalAiError ? (
+                  <div className="rounded-xl bg-rose-950/40 border border-rose-800/50 p-3 text-xs text-rose-300 flex items-start gap-2">
+                    <AlertTriangle className="size-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold">Analysis Request Failed</p>
+                      <p className="text-[11px] text-rose-300/80">{modalAiError}</p>
+                    </div>
+                  </div>
+                ) : modalAiAnalysis ? (
+                  <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-4 text-xs text-slate-300 leading-relaxed space-y-2 max-h-60 overflow-y-auto font-sans">
+                    {modalAiAnalysis.split('\n').map((line, idx) => {
+                      const trimmed = line.trim();
+                      if (!trimmed) return <div key={idx} className="h-1" />;
+                      if (trimmed.startsWith('#')) {
+                        return <h6 key={idx} className="font-bold text-teal-300 mt-2 font-mono">{trimmed.replace(/^#+\s*/, '')}</h6>;
+                      }
+                      if (trimmed.startsWith('>')) {
+                        return (
+                          <div key={idx} className="rounded-lg border border-amber-500/30 bg-amber-950/30 p-2.5 text-amber-200/90 my-1 font-medium">
+                            <span className="block font-bold text-amber-300 text-[10px] mb-0.5">⚠️ CLINICAL NOTICE</span>
+                            {trimmed.replace(/^>\s*/, '')}
+                          </div>
+                        );
+                      }
+                      if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+                        return (
+                          <div key={idx} className="flex items-start gap-1.5 pl-2">
+                            <span className="text-teal-400">•</span>
+                            <span dangerouslySetInnerHTML={{ __html: trimmed.replace(/^[*•-]\s*/, '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>') }} />
+                          </div>
+                        );
+                      }
+                      return <p key={idx} dangerouslySetInnerHTML={{ __html: trimmed.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>') }} />;
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-slate-400 text-xs space-y-1">
+                    <p>No AI analysis generated for this snapshot yet.</p>
+                    <p className="text-[11px] text-slate-500">
+                      Click <strong className="text-indigo-300">&quot;Ask Gemini: Draft Analysis&quot;</strong> to evaluate rhythm stability, baseline wander, and signal noise.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

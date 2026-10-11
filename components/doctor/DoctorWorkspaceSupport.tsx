@@ -9,8 +9,7 @@ export const fieldClass = 'w-full rounded-xl border border-slate-200 bg-white px
 export const activeAppointmentStatuses = new Set(['scheduled', 'upcoming', 'in progress']);
 
 export function hasRecordedVitals(patient: PatientDirectoryItem) {
-  return [patient.currentVitals.heartRate, patient.currentVitals.spo2, patient.currentVitals.temperature, patient.lastSyncedTemperature].some((value) => typeof value === 'number' && value > 0)
-    || /^\d{2,3}\/\d{2,3}$/.test(patient.currentVitals.bloodPressure || '');
+  return typeof patient?.currentVitals?.heartRate === 'number' && patient.currentVitals.heartRate > 0;
 }
 
 export function clinicDate() {
@@ -37,7 +36,7 @@ export function WorkspaceDataNotice() {
   return null;
 }
 
-export function WorkspaceDialog({ title, onClose, children, busy = false }: { title: string; onClose: () => void; children: ReactNode; busy?: boolean }) {
+export function WorkspaceDialog({ title, onClose, children, busy = false, maxWidth = 'max-w-2xl' }: { title: string; onClose: () => void; children: ReactNode; busy?: boolean; maxWidth?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -47,7 +46,7 @@ export function WorkspaceDialog({ title, onClose, children, busy = false }: { ti
     dialog?.showModal();
     return () => { dialog?.close(); document.body.style.overflow = previousOverflow; };
   }, []);
-  return <dialog ref={dialogRef} aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }} className="m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-950/35 backdrop:backdrop-blur-sm"><div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:px-7"><h2 id={titleId} className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2><button type="button" onClick={onClose} disabled={busy} aria-label="Close dialog" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-teal-700 disabled:opacity-40"><X size={20} aria-hidden="true" /></button></div><div className="p-5 sm:p-7">{children}</div></dialog>;
+  return <dialog ref={dialogRef} aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }} className={`m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] ${maxWidth} overflow-y-auto rounded-3xl border border-slate-200 bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-950/35 backdrop:backdrop-blur-sm`}><div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:px-7"><h2 id={titleId} className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2><button type="button" onClick={onClose} disabled={busy} aria-label="Close dialog" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-teal-700 disabled:opacity-40"><X size={20} aria-hidden="true" /></button></div><div className="p-5 sm:p-7">{children}</div></dialog>;
 }
 
 export function textValue(...values: unknown[]) {

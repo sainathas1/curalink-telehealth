@@ -20,7 +20,6 @@ const doctorRoutes: Record<DoctorTab, string> = {
   'patient-directory': '/doctor/patients',
   records: '/doctor/records',
   'ehr-prescribe': '/doctor/ehr',
-  'hardware-hub': '/doctor/iot-hub',
   profile: '/doctor/profile',
 };
 

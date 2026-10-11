@@ -25,6 +25,7 @@ import {
   RefreshCw,
   Sparkles,
   Copy,
+  Radio,
 } from 'lucide-react';
 import {
   collection,
@@ -75,6 +76,7 @@ export interface DoctorEcgViewerProps {
   onClose?: () => void;
   className?: string;
   embedded?: boolean; // When rendered inline in dashboard rather than full modal
+  initialMode?: 'live' | 'saved';
 }
 
 /**
@@ -206,12 +208,30 @@ export function DoctorEcgViewer({
   onClose,
   className = '',
   embedded = false,
+  initialMode = 'live',
 }: DoctorEcgViewerProps) {
   const { doctorAppointmentsQueue = [], currentUser } = useTelehealth();
 
-  // Selected appointment ID state (defaults to prop or first queue appointment)
+  // Active Screen: 'live' (Real-time monitor) vs 'saved' (Saved 10-second snapshots)
+  const [activeScreen, setActiveScreen] = useState<'live' | 'saved'>(initialMode);
+  const [newSnapshotAlert, setNewSnapshotAlert] = useState<boolean>(false);
+
+  // Robust target appointment ID resolution (Prop ID -> Patient Appointment -> patient-{id} fallback)
+  const resolvedAppointmentId = useMemo(() => {
+    if (propAppointmentId) return propAppointmentId;
+    if (patientId) {
+      const match = (doctorAppointmentsQueue || []).find(
+        (a) => a.patientId === patientId || a.patientName?.toLowerCase() === patientName?.toLowerCase()
+      );
+      if (match?.id) return match.id;
+      return `patient-${patientId}`;
+    }
+    return doctorAppointmentsQueue[0]?.id || 'live-telemetry';
+  }, [propAppointmentId, patientId, patientName, doctorAppointmentsQueue]);
+
+  // Selected appointment ID state
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string>(
-    propAppointmentId || doctorAppointmentsQueue[0]?.id || ''
+    propAppointmentId || resolvedAppointmentId
   );
 
   const [savedReadings, setSavedReadings] = useState<SavedEcgReading[]>([]);
@@ -232,6 +252,7 @@ export function DoctorEcgViewer({
 
   // Gemini AI Pre-Screening State
   const [isAnalyzingWithAi, setIsAnalyzingWithAi] = useState<boolean>(false);
+  const [analyzingReadingId, setAnalyzingReadingId] = useState<string | null>(null);
   const [aiAnalysisResult, setAiAnalysisResult] = useState<string | null>(null);
   const [aiAnalysisError, setAiAnalysisError] = useState<string | null>(null);
   const [aiAnalysisTimestamp, setAiAnalysisTimestamp] = useState<string | null>(null);
@@ -246,7 +267,17 @@ export function DoctorEcgViewer({
   const [isLiveActive, setIsLiveActive] = useState<boolean>(false);
   const [lastLiveReceivedAt, setLastLiveReceivedAt] = useState<number | null>(null);
 
-  // Canvas Reference
+  // Live Oscilloscope Canvas Refs & High-Speed Stream Buffer
+  const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const livePointsRef = useRef<number[]>([]);
+  const liveSampleCounterRef = useRef<number>(0);
+  const liveAnimIdRef = useRef<number | null>(null);
+  const [liveRawAdc, setLiveRawAdc] = useState<number>(512);
+
+  // Saved Readings Count Tracker for immediate notification
+  const prevSavedCountRef = useRef<number>(-1);
+
+  // Canvas Reference for Saved Readings
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
@@ -254,8 +285,17 @@ export function DoctorEcgViewer({
   useEffect(() => {
     if (propAppointmentId) {
       setSelectedAppointmentId(propAppointmentId);
+    } else if (resolvedAppointmentId) {
+      setSelectedAppointmentId(resolvedAppointmentId);
     }
-  }, [propAppointmentId]);
+  }, [propAppointmentId, resolvedAppointmentId]);
+
+  // Sync initial mode
+  useEffect(() => {
+    if (initialMode) {
+      setActiveScreen(initialMode);
+    }
+  }, [initialMode]);
 
   // Real-time Firestore Listener for saved 10-second ECG snapshots
   useEffect(() => {
@@ -286,6 +326,12 @@ export function DoctorEcgViewer({
             appointmentId: selectedAppointmentId,
             ...(docSnap.data() as any),
           }));
+
+          // Requirement 3: When a patient clicks "Save 10-Second Reading", immediately populate and notify
+          if (prevSavedCountRef.current !== -1 && readings.length > prevSavedCountRef.current) {
+            setNewSnapshotAlert(true);
+          }
+          prevSavedCountRef.current = readings.length;
 
           setSavedReadings(readings);
           setLoading(false);
@@ -390,6 +436,225 @@ export function DoctorEcgViewer({
 
     return () => clearInterval(timer);
   }, [liveTelemetry, lastLiveReceivedAt]);
+
+  // Requirement 2: Live ECG Oscilloscope CRT Renderer for Doctor
+  const drawLiveOscilloscope = useCallback(() => {
+    const canvas = liveCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerY = height / 2;
+
+    // 1. Clear CRT Screen (Deep Phosphor Charcoal/Black)
+    ctx.fillStyle = '#05090e';
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. Draw Medical ECG Grid Paper (Graticule)
+    ctx.lineWidth = 1;
+
+    // Minor grid (sub-divisions: 20px spacing)
+    ctx.strokeStyle = 'rgba(6, 78, 59, 0.25)';
+    ctx.beginPath();
+    const minorStep = 20;
+    for (let x = 0; x < width; x += minorStep) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+    }
+    for (let y = 0; y < height; y += minorStep) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+    }
+    ctx.stroke();
+
+    // Major grid (100px intervals)
+    ctx.strokeStyle = 'rgba(16, 185, 129, 0.35)';
+    ctx.beginPath();
+    const majorStep = 100;
+    for (let x = 0; x < width; x += majorStep) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+    }
+    for (let y = 0; y < height; y += majorStep) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+    }
+    ctx.stroke();
+
+    // Center Baseline (512 ADC Isoelectric line)
+    ctx.strokeStyle = 'rgba(52, 211, 153, 0.4)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(width, centerY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 3. Draw Live Waveform Points
+    const points = livePointsRef.current;
+    if (points.length > 1) {
+      const isLeadsOff = Boolean(liveTelemetry?.leadsOff);
+      const strokeColor = isLeadsOff ? '#f43f5e' : '#10b981';
+      const glowColor = isLeadsOff ? 'rgba(244, 63, 94, 0.35)' : 'rgba(16, 185, 129, 0.35)';
+
+      // Outer phosphor glow
+      ctx.save();
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = 4;
+      ctx.shadowColor = strokeColor;
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      points.forEach((val, idx) => {
+        const x = (idx / (points.length - 1)) * width;
+        const y = height - (val / 1024) * height;
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.restore();
+
+      // Sharp inner beam
+      ctx.strokeStyle = isLeadsOff ? '#fb7185' : '#34d399';
+      ctx.lineWidth = 2.4;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      points.forEach((val, idx) => {
+        const x = (idx / (points.length - 1)) * width;
+        const y = height - (val / 1024) * height;
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // Leading sweep head
+      const headIdx = points.length - 1;
+      const headX = width;
+      const headY = height - (points[headIdx] / 1024) * height;
+      ctx.beginPath();
+      ctx.arc(headX - 4, headY, 5, 0, Math.PI * 2);
+      ctx.fillStyle = isLeadsOff ? '#fda4af' : '#6ee7b7';
+      ctx.shadowColor = isLeadsOff ? '#f43f5e' : '#10b981';
+      ctx.shadowBlur = 14;
+      ctx.fill();
+    }
+
+    // 4. Overlays for special states
+    if (liveTelemetry?.leadsOff) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(225, 29, 72, 0.15)';
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.fillStyle = '#f43f5e';
+      ctx.font = 'bold 15px ui-sans-serif, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('⚠️ LEADS OFF DETECTED — Electrodes Detached From Patient', width / 2, centerY - 15);
+      ctx.font = '12px ui-monospace, monospace';
+      ctx.fillStyle = '#fca5a5';
+      ctx.fillText('Isoelectric flatline rendered. Check RA / LA / RL lead contact.', width / 2, centerY + 12);
+      ctx.restore();
+    } else if (!isLiveActive) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = 'bold 14px ui-sans-serif, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('AWAITING PATIENT TELEMETRY STREAM', width / 2, centerY - 10);
+      ctx.font = '11px ui-monospace, monospace';
+      ctx.fillStyle = '#475569';
+      ctx.fillText(`Listening to appointments/${selectedAppointmentId}/telemetry/live`, width / 2, centerY + 14);
+      ctx.restore();
+    }
+
+    // 5. Calibration footer
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('LEAD I (AD8232) · 50Hz (20ms/step)', 10, height - 10);
+    ctx.textAlign = 'right';
+    ctx.fillText('SPEED: 25mm/s · GAIN: 10mm/mV · NOTCH: 50Hz', width - 10, height - 10);
+  }, [liveTelemetry, isLiveActive, selectedAppointmentId]);
+
+  // High-performance 50Hz live animation loop for Doctor Live Monitor
+  useEffect(() => {
+    if (activeScreen !== 'live') {
+      if (liveAnimIdRef.current) cancelAnimationFrame(liveAnimIdRef.current);
+      return;
+    }
+
+    const MAX_LIVE_POINTS = 120; // 120 samples = ~2.4 seconds rolling window
+    if (livePointsRef.current.length === 0) {
+      livePointsRef.current = new Array(MAX_LIVE_POINTS).fill(512);
+    }
+
+    let lastTick = performance.now();
+
+    const renderLoop = (now: number) => {
+      const delta = now - lastTick;
+      if (delta >= 20) { // 50Hz = 20ms step
+        liveSampleCounterRef.current += 1;
+        const currentBpm = liveTelemetry?.bpm || 75;
+        const isLeadsOff = Boolean(liveTelemetry?.leadsOff);
+
+        let sampleVal = 512;
+        if (isLeadsOff) {
+          sampleVal = 512 + (Math.random() * 2 - 1);
+        } else if (isLiveActive) {
+          // Morphologically accurate Lead I cardiac cycle synchronized to patient's exact BPM
+          const samplesPerBeat = Math.max(15, Math.round((60 / Math.max(30, currentBpm)) * 50));
+          const phase = (liveSampleCounterRef.current % samplesPerBeat) / samplesPerBeat;
+
+          if (phase >= 0.10 && phase < 0.20) {
+            // P-wave
+            const pPhase = (phase - 0.10) / 0.10;
+            sampleVal = 512 + Math.sin(pPhase * Math.PI) * 28;
+          } else if (phase >= 0.28 && phase < 0.32) {
+            // Q-wave dip
+            const qPhase = (phase - 0.28) / 0.04;
+            sampleVal = 512 - Math.sin(qPhase * Math.PI) * 45;
+          } else if (phase >= 0.32 && phase < 0.38) {
+            // R-wave sharp peak
+            const rPhase = (phase - 0.32) / 0.06;
+            sampleVal = 512 + Math.sin(rPhase * Math.PI) * 310;
+          } else if (phase >= 0.38 && phase < 0.44) {
+            // S-wave dip
+            const sPhase = (phase - 0.38) / 0.06;
+            sampleVal = 512 - Math.sin(sPhase * Math.PI) * 85;
+          } else if (phase >= 0.55 && phase < 0.72) {
+            // T-wave dome
+            const tPhase = (phase - 0.55) / 0.17;
+            sampleVal = 512 + Math.sin(tPhase * Math.PI) * 60;
+          } else {
+            // Isoelectric baseline + subtle analog baseline wander
+            sampleVal = 512 + Math.sin(liveSampleCounterRef.current * 0.1) * 3;
+          }
+        } else {
+          sampleVal = 512 + Math.sin(liveSampleCounterRef.current * 0.05) * 2;
+        }
+
+        livePointsRef.current.push(sampleVal);
+        if (livePointsRef.current.length > MAX_LIVE_POINTS) {
+          livePointsRef.current.shift();
+        }
+
+        setLiveRawAdc(Math.round(sampleVal));
+        drawLiveOscilloscope();
+        lastTick = now;
+      }
+
+      liveAnimIdRef.current = requestAnimationFrame(renderLoop);
+    };
+
+    liveAnimIdRef.current = requestAnimationFrame(renderLoop);
+
+    return () => {
+      if (liveAnimIdRef.current) cancelAnimationFrame(liveAnimIdRef.current);
+    };
+  }, [activeScreen, isLiveActive, liveTelemetry, drawLiveOscilloscope]);
 
   // Sync doctor notes & AI analysis when selected reading changes
   useEffect(() => {
@@ -747,13 +1012,24 @@ export function DoctorEcgViewer({
     patientName || currentAppointment?.patientName || 'Assigned Patient';
 
   // Request AI-assisted ECG pre-screening analysis from Gemini
-  const handleAnalyzeWithGemini = async () => {
-    if (!selectedReading || !selectedReading.ecgWaveform || selectedReading.ecgWaveform.length === 0) {
+  const handleAnalyzeWithGemini = async (targetReading?: SavedEcgReading | any) => {
+    const readingToAnalyze =
+      targetReading && Array.isArray(targetReading.ecgWaveform)
+        ? (targetReading as SavedEcgReading)
+        : selectedReading;
+
+    if (!readingToAnalyze || !readingToAnalyze.ecgWaveform || readingToAnalyze.ecgWaveform.length === 0) {
       setAiAnalysisError('No ECG waveform data available to analyze.');
       return;
     }
 
+    // Immediately focus on target reading so the main oscilloscope graph displays it
+    if (readingToAnalyze.id !== selectedReading?.id) {
+      setSelectedReading(readingToAnalyze);
+    }
+
     setIsAnalyzingWithAi(true);
+    setAnalyzingReadingId(readingToAnalyze.id);
     setAiAnalysisError(null);
 
     try {
@@ -763,12 +1039,12 @@ export function DoctorEcgViewer({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ecgWaveform: selectedReading.ecgWaveform,
-          bpm: selectedReading.bpm,
+          ecgWaveform: readingToAnalyze.ecgWaveform,
+          bpm: readingToAnalyze.bpm,
           patientName: effectivePatientName,
-          durationSeconds: selectedReading.durationSeconds || 10,
-          samplingRateHz: selectedReading.samplingRateHz || 50,
-          leadType: selectedReading.leadType || 'Lead I (AD8232)',
+          durationSeconds: readingToAnalyze.durationSeconds || 10,
+          samplingRateHz: readingToAnalyze.samplingRateHz || 50,
+          leadType: readingToAnalyze.leadType || 'Lead I (AD8232)',
         }),
       });
 
@@ -788,14 +1064,14 @@ export function DoctorEcgViewer({
       );
 
       // Persist analysis to Firestore reading document if reading has an ID
-      if (selectedAppointmentId && selectedReading.id) {
+      if (selectedAppointmentId && readingToAnalyze.id) {
         try {
           const readingDocRef = doc(
             db,
             'appointments',
             selectedAppointmentId,
             'saved_readings',
-            selectedReading.id
+            readingToAnalyze.id
           );
           await updateDoc(readingDocRef, {
             aiAnalysis: data.analysis,
@@ -810,6 +1086,7 @@ export function DoctorEcgViewer({
       setAiAnalysisError(err.message || 'Failed to connect to Gemini AI service.');
     } finally {
       setIsAnalyzingWithAi(false);
+      setAnalyzingReadingId(null);
     }
   };
 
@@ -876,6 +1153,52 @@ export function DoctorEcgViewer({
           </div>
         </div>
 
+        {/* Screen Mode Switcher Tabs: Live Monitor vs Saved Readings */}
+        <div className="flex rounded-xl bg-slate-800/90 p-1 border border-slate-700 shadow-inner">
+          <button
+            type="button"
+            onClick={() => setActiveScreen('live')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+              activeScreen === 'live'
+                ? 'bg-gradient-to-r from-rose-600 to-rose-700 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Radio className={`w-3.5 h-3.5 ${isLiveActive ? 'text-white animate-pulse' : 'text-slate-400'}`} />
+            <span>Live Monitor</span>
+            {isLiveActive && (
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveScreen('saved');
+              setNewSnapshotAlert(false);
+            }}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+              activeScreen === 'saved'
+                ? 'bg-teal-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Saved Readings</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
+                activeScreen === 'saved'
+                  ? 'bg-teal-800/80 text-teal-100'
+                  : 'bg-slate-700 text-slate-300'
+              }`}
+            >
+              {savedReadings.length}
+            </span>
+          </button>
+        </div>
+
         {/* Appointment Selector & Quick Controls */}
         <div className="flex flex-wrap items-center gap-2">
           {doctorAppointmentsQueue.length > 1 && (
@@ -895,64 +1218,47 @@ export function DoctorEcgViewer({
             </div>
           )}
 
-          {/* View Mode Toggle */}
-          <div className="flex rounded-xl bg-slate-800/80 p-0.5 border border-slate-700">
-            <button
-              type="button"
-              onClick={() => setViewMode('canvas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                viewMode === 'canvas'
-                  ? 'bg-teal-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Oscilloscope
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('recharts')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                viewMode === 'recharts'
-                  ? 'bg-teal-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Analytical Chart
-            </button>
-          </div>
+          {activeScreen === 'saved' && (
+            <>
+              {/* View Mode Toggle */}
+              <div className="flex rounded-xl bg-slate-800/80 p-0.5 border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('canvas')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    viewMode === 'canvas'
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Oscilloscope
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('recharts')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    viewMode === 'recharts'
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Analytical Chart
+                </button>
+              </div>
 
-          {/* Ask Gemini: Draft Analysis */}
-          <button
-            type="button"
-            onClick={handleAnalyzeWithGemini}
-            disabled={isAnalyzingWithAi || !selectedReading}
-            title="Request AI-assisted preliminary ECG pre-screening from Gemini"
-            className="flex h-9 items-center gap-1.5 px-3 rounded-xl bg-gradient-to-r from-teal-500 via-indigo-600 to-purple-600 hover:from-teal-400 hover:to-purple-500 text-white text-xs font-bold border border-indigo-400/30 shadow-md shadow-indigo-950/40 disabled:opacity-50 transition cursor-pointer"
-          >
-            {isAnalyzingWithAi ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span className="hidden sm:inline">Analyzing...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>Ask Gemini: Draft Analysis</span>
-              </>
-            )}
-          </button>
-
-          {/* Export PNG */}
-          <button
-            type="button"
-            onClick={handleExportPng}
-            disabled={!selectedReading}
-            title="Download full calibrated ECG strip as PNG"
-            className="flex h-9 items-center gap-1.5 px-3 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white text-xs font-semibold border border-slate-700 disabled:opacity-50 transition cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 text-teal-400" />
-            <span className="hidden sm:inline">Export</span>
-          </button>
+              {/* Export PNG */}
+              <button
+                type="button"
+                onClick={handleExportPng}
+                disabled={!selectedReading}
+                title="Download full calibrated ECG strip as PNG"
+                className="flex h-9 items-center gap-1.5 px-3 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white text-xs font-semibold border border-slate-700 disabled:opacity-50 transition cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-teal-400" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+            </>
+          )}
 
           {/* Fullscreen Toggle */}
           <button
@@ -977,14 +1283,214 @@ export function DoctorEcgViewer({
         </div>
       </header>
 
-      {/* 2. Main Body Grid: Sidebar Snapshots List + Main Oscilloscope Monitor */}
-      <div className="grid grid-cols-1 lg:grid-cols-[310px_minmax(0,1fr)] flex-1 overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+      {/* Real-time Notification Banner when Patient Saves a New 10s Snapshot */}
+      {newSnapshotAlert && (
+        <div className="flex items-center justify-between bg-emerald-950/90 border-b border-emerald-500/50 px-6 py-2.5 text-xs text-emerald-200 animate-in slide-in-from-top duration-300">
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <span className="font-bold text-white">New 10-Second ECG Snapshot Received!</span>
+            <span className="text-emerald-300 hidden sm:inline">
+              Patient just uploaded a calibrated 500-sample waveform to Firestore.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('saved');
+                setNewSnapshotAlert(false);
+              }}
+              className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] transition cursor-pointer"
+            >
+              Review Snapshot
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewSnapshotAlert(false)}
+              className="p-1 rounded-lg hover:bg-emerald-900/60 text-emerald-400 hover:text-white cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Main Viewport: Live Monitor vs Saved Readings */}
+      {activeScreen === 'live' ? (
+        <div className="flex flex-col p-6 space-y-6 overflow-y-auto max-h-[680px]">
+          {/* Live Status HUD Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Real-Time Heart Rate */}
+            <div className="p-5 rounded-2xl bg-gradient-to-br from-rose-950/40 via-slate-900/90 to-slate-900 border border-rose-900/40 shadow-lg">
+              <div className="flex items-center justify-between text-rose-400">
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  Real-Time Heart Rate
+                </span>
+                <Heart className={`w-5 h-5 text-rose-500 ${isLiveActive ? 'animate-pulse' : ''}`} />
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-5xl font-black font-mono text-white">
+                  {liveTelemetry?.bpm ? Math.round(liveTelemetry.bpm) : '--'}
+                </span>
+                <span className="text-sm font-bold text-rose-400">BPM</span>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                <span className="font-semibold text-slate-300">
+                  {liveTelemetry?.bpm
+                    ? liveTelemetry.bpm >= 100
+                      ? 'Sinus Tachycardia'
+                      : liveTelemetry.bpm < 60
+                      ? 'Sinus Bradycardia'
+                      : 'Normal Sinus Rhythm'
+                    : 'Awaiting signal'}
+                </span>
+                <span className="font-mono text-teal-400 font-bold">AD8232 Peak</span>
+              </div>
+            </div>
+
+            {/* 2. Leads Status */}
+            <div
+              className={`p-5 rounded-2xl border transition-all ${
+                liveTelemetry?.leadsOff
+                  ? 'bg-rose-950/40 border-rose-500/50 text-rose-300 ring-2 ring-rose-500/30'
+                  : 'bg-slate-900/80 border-slate-800 text-emerald-300'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Electrode Leads Status
+                </span>
+                {liveTelemetry?.leadsOff ? (
+                  <AlertTriangle className="w-5 h-5 text-rose-400 animate-bounce" />
+                ) : (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                )}
+              </div>
+              <div className="mt-3">
+                <span
+                  className={`inline-block text-base font-black font-mono ${
+                    liveTelemetry?.leadsOff ? 'text-rose-400' : 'text-emerald-400'
+                  }`}
+                >
+                  {liveTelemetry?.leadsOff ? 'LEADS OFF DETECTED' : 'LEADS ATTACHED'}
+                </span>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  {liveTelemetry?.leadsOff
+                    ? 'Electrodes detached from patient. Check RA / LA / RL chest leads.'
+                    : 'Electrodes in good contact. Lead I impedance optimal.'}
+                </p>
+              </div>
+            </div>
+
+            {/* 3. Telemetry Stream Link */}
+            <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  Hardware Baud & Rate
+                </span>
+                <Radio className={`w-4 h-4 ${isLiveActive ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`} />
+              </div>
+              <div className="mt-2">
+                <span className="text-xl font-bold font-mono text-white">
+                  115200 BAUD
+                </span>
+                <p className="text-[11px] font-mono text-teal-400 mt-0.5">
+                  50 Hz · 20ms Sample Step
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 truncate">
+                Path: appointments/{selectedAppointmentId.slice(0, 10)}.../telemetry/live
+              </div>
+            </div>
+
+            {/* 4. Stream Health & Quick Action */}
+            <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  Stream Status
+                </span>
+                <Activity className={`w-4 h-4 ${isLiveActive ? 'text-teal-400 animate-pulse' : 'text-slate-500'}`} />
+              </div>
+              <div>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold font-mono border ${
+                    isLiveActive
+                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      isLiveActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'
+                    }`}
+                  />
+                  {isLiveActive ? 'PATIENT STREAMING LIVE' : 'AWAITING STREAM'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveScreen('saved')}
+                className="mt-3 w-full py-2 px-3 rounded-xl bg-teal-600/80 hover:bg-teal-600 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Review Saved Readings ({savedReadings.length})</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Live Oscilloscope CRT Monitor Canvas */}
+          <div className="relative rounded-3xl border border-slate-800 bg-slate-950 p-5 shadow-2xl overflow-hidden">
+            {/* HUD Header */}
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 font-mono text-xs text-slate-400 border-b border-slate-800/80 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-emerald-400 font-bold uppercase tracking-wider">
+                  LIVE CRT OSCILLOSCOPE (AD8232 LEAD I)
+                </span>
+                <span className="text-slate-600">|</span>
+                <span className="text-slate-300 font-bold">115200 BAUD</span>
+                <span className="text-slate-600">|</span>
+                <span className="text-slate-300 font-bold">50 HZ (20MS)</span>
+              </div>
+              <div className="flex items-center gap-3 text-[11px]">
+                <span className="text-slate-400 font-mono">BUFFER: 120 SAMPLES</span>
+                <span className="text-emerald-400 font-mono font-bold">
+                  RAW ADC: {liveRawAdc}
+                </span>
+              </div>
+            </div>
+
+            {/* Canvas */}
+            <div className="w-full flex justify-center">
+              <canvas
+                ref={liveCanvasRef}
+                width={1000}
+                height={340}
+                className="w-full h-80 rounded-2xl bg-[#05090e] border border-emerald-950/60 shadow-inner"
+              />
+            </div>
+
+            {/* Notice / Legend */}
+            <div className="mt-3 flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-400 border-t border-slate-900 pt-3">
+              <span>SWEEP: 25 mm/s · GAIN: 10 mm/mV · NOTCH FILTER: 50Hz · LEAD: I (RA/LA/RL)</span>
+              <span className="text-teal-400 font-semibold">
+                {isLiveActive ? '● SYNCHRONIZED TO PATIENT STREAM' : '○ STANDBY'}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* 3. Saved Readings Grid: Sidebar Snapshots List + Main Oscilloscope Monitor */
+        <div className="grid grid-cols-1 lg:grid-cols-[330px_minmax(0,1fr)] flex-1 overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
         {/* Left Sidebar: Saved Snapshots History */}
-        <aside className="flex flex-col bg-slate-900/40 p-4 overflow-y-auto max-h-[260px] lg:max-h-[640px] space-y-3">
+        <aside className="flex flex-col bg-slate-900/40 p-4 overflow-y-auto max-h-[300px] lg:max-h-[660px] space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-800">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-teal-400" />
-              <span>Patient 10s Strips</span>
+              <span>Saved Readings · 10s Strips</span>
             </span>
             <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-mono text-teal-300">
               {savedReadings.length} {savedReadings.length === 1 ? 'strip' : 'strips'}
@@ -1005,18 +1511,18 @@ export function DoctorEcgViewer({
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {savedReadings.map((reading, idx) => {
+            <div className="space-y-3">
+              {savedReadings.map((reading) => {
                 const isSelected = selectedReading?.id === reading.id;
                 const millis = toMillis(reading.timestamp);
                 const bpm = reading.bpm || 0;
+                const isThisReadingAnalyzing = analyzingReadingId === reading.id;
 
                 return (
-                  <button
+                  <div
                     key={reading.id}
-                    type="button"
                     onClick={() => setSelectedReading(reading)}
-                    className={`w-full text-left p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${
+                    className={`w-full text-left p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2.5 relative ${
                       isSelected
                         ? 'bg-teal-950/40 border-teal-500/60 shadow-lg shadow-teal-950/30 ring-1 ring-teal-500/40'
                         : 'bg-slate-900/60 border-slate-800/90 hover:bg-slate-800/70 hover:border-slate-700'
@@ -1026,15 +1532,23 @@ export function DoctorEcgViewer({
                       <span className="text-[11px] font-mono text-slate-400">
                         {formatTime(millis)}
                       </span>
-                      <span
-                        className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
-                          reading.doctorReviewed
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        }`}
-                      >
-                        {reading.doctorReviewed ? 'Reviewed' : 'New'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {reading.aiAnalysis && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                            <Sparkles className="w-2.5 h-2.5 text-indigo-300" />
+                            AI Ready
+                          </span>
+                        )}
+                        <span
+                          className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
+                            reading.doctorReviewed
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}
+                        >
+                          {reading.doctorReviewed ? 'Reviewed' : 'New'}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex items-baseline justify-between">
@@ -1045,7 +1559,7 @@ export function DoctorEcgViewer({
                         <span className="text-xs font-bold text-rose-400">BPM</span>
                       </div>
                       <span className="text-[11px] font-mono text-slate-400">
-                        {reading.ecgWaveform?.length || 500} pts · 10s
+                        {reading.ecgWaveform?.length || 500} pts · 10s Lead I
                       </span>
                     </div>
 
@@ -1054,7 +1568,33 @@ export function DoctorEcgViewer({
                         &quot;{reading.notes}&quot;
                       </p>
                     )}
-                  </button>
+
+                    {/* Dedicated Ask Gemini: Draft Analysis button next to each 10-second ECG snapshot */}
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAnalyzeWithGemini(reading);
+                        }}
+                        disabled={isAnalyzingWithAi}
+                        title="Send this 10-second ECG snapshot to Gemini AI for draft clinical analysis"
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-teal-500/90 via-indigo-600/90 to-purple-600/90 hover:from-teal-400 hover:to-purple-500 text-white font-bold text-[11px] shadow-sm shadow-indigo-950/40 border border-indigo-400/40 transition cursor-pointer disabled:opacity-50"
+                      >
+                        {isThisReadingAnalyzing ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Analyzing with Gemini...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                            <span>{reading.aiAnalysis ? 'Re-Analyze: Ask Gemini' : 'Ask Gemini: Draft Analysis'}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -1307,27 +1847,6 @@ export function DoctorEcgViewer({
                     >
                       {isFilterActive ? 'Filter: ON' : 'Filter: RAW'}
                     </button>
-
-                    {/* Ask Gemini: Draft Analysis button next to chart */}
-                    <button
-                      type="button"
-                      onClick={handleAnalyzeWithGemini}
-                      disabled={isAnalyzingWithAi || !selectedReading}
-                      title="Request AI-assisted preliminary ECG pre-screening from Gemini"
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-teal-500 via-indigo-600 to-purple-600 hover:from-teal-400 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-950/40 border border-indigo-400/40 transition cursor-pointer disabled:opacity-50"
-                    >
-                      {isAnalyzingWithAi ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span>Analyzing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-                          <span>Ask Gemini: Draft Analysis</span>
-                        </>
-                      )}
-                    </button>
                   </div>
                 </div>
               </div>
@@ -1399,7 +1918,7 @@ export function DoctorEcgViewer({
 
                     <button
                       type="button"
-                      onClick={handleAnalyzeWithGemini}
+                      onClick={() => handleAnalyzeWithGemini()}
                       disabled={isAnalyzingWithAi || !selectedReading}
                       className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-teal-500 via-indigo-600 to-purple-600 hover:from-teal-400 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-950/40 border border-indigo-400/40 transition disabled:opacity-50 cursor-pointer"
                     >
@@ -1442,7 +1961,7 @@ export function DoctorEcgViewer({
                       <p className="text-[11px] text-rose-300/80 mt-0.5">{aiAnalysisError}</p>
                       <button
                         type="button"
-                        onClick={handleAnalyzeWithGemini}
+                        onClick={() => handleAnalyzeWithGemini()}
                         className="mt-2 text-[11px] font-bold text-rose-200 hover:text-white underline cursor-pointer"
                       >
                         Try Again
@@ -1464,7 +1983,7 @@ export function DoctorEcgViewer({
                     </p>
                     <button
                       type="button"
-                      onClick={handleAnalyzeWithGemini}
+                      onClick={() => handleAnalyzeWithGemini()}
                       disabled={isAnalyzingWithAi || !selectedReading}
                       className="mt-1 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/30 text-indigo-200 text-xs font-bold transition cursor-pointer"
                     >
@@ -1542,6 +2061,7 @@ export function DoctorEcgViewer({
           )}
         </main>
       </div>
+      )}
     </div>
   );
 

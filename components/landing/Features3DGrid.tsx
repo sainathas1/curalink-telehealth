@@ -35,12 +35,12 @@ const FEATURES: FeatureItem[] = [
     id: 'iot-telemetry',
     icon: Cpu,
     badge: 'Hardware Sync',
-    title: 'ESP32 & Wearable IoT Telemetry',
+    title: 'AD8232 ECG & Cardiac Telemetry',
     description:
-      'Continuous biometric streaming from MAX30102 pulse oximeters and DS18B20 digital thermometers directly to the cloud without phone tethering.',
+      'Continuous biometric streaming from AD8232 single-lead ECG biosensors and heart rate telemetry directly to the clinical cloud.',
     metrics: '<50ms Transmission Latency',
-    actionText: 'Explore ESP32 Code',
-    actionHref: '/doctor/iot-hub',
+    actionText: 'View ECG Telemetry',
+    actionHref: '/patient/vitals',
     colorScheme: 'teal',
   },
   {

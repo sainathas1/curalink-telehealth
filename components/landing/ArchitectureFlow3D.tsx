@@ -161,11 +161,11 @@ export function ArchitectureFlow3D() {
 
           <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
             <Link
-              href="/doctor/iot-hub"
+              href="/doctor/ward"
               className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs text-center shadow-lg shadow-teal-500/20 flex items-center justify-center gap-2"
             >
               <FileCode className="w-4 h-4" />
-              <span>Inspect C++ Firmware</span>
+              <span>Ward Telemetry Stream</span>
             </Link>
 
             <Link

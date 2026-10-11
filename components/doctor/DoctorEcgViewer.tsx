@@ -1014,10 +1014,7 @@ export function DoctorEcgViewer({
     }, 100);
 
     try {
-      const baseUrl = (process.env.NEXT_PUBLIC_API_URL || '').trim().replace(/\/+$/, '');
-      const endpoint = baseUrl ? `${baseUrl}/api/analyze-ecg` : '/api/analyze-ecg';
-
-      const response = await fetch(endpoint, {
+      const response = await fetch('/api/analyze-ecg', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1602,7 +1599,7 @@ export function DoctorEcgViewer({
                         ) : (
                           <>
                             <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                            <span>{reading.aiAnalysis ? 'Re-Analyze: Ask Gemini' : 'Ask Gemini: Draft Analysis'}</span>
+                            <span>{reading.aiAnalysis ? 'Re-Analyze: Ask Gemini' : 'Ask Gemini: Analyze ECG'}</span>
                           </>
                         )}
                       </button>
@@ -1946,7 +1943,7 @@ export function DoctorEcgViewer({
                       ) : (
                         <>
                           <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                          <span>{aiAnalysisResult ? 'Re-Analyze with Gemini' : 'Ask Gemini: Draft Analysis'}</span>
+                          <span>{aiAnalysisResult ? 'Re-Analyze with Gemini' : 'Ask Gemini: Analyze ECG'}</span>
                         </>
                       )}
                     </button>
@@ -1995,7 +1992,7 @@ export function DoctorEcgViewer({
                       No AI Pre-Screening Generated Yet
                     </p>
                     <p className="text-[11px] text-slate-500 max-w-md mx-auto">
-                      Click <strong className="text-indigo-300">&quot;Ask Gemini: Draft Analysis&quot;</strong> to evaluate the 500-sample voltage waveform for baseline wander, signal noise, and preliminary cardiac rhythm indicators.
+                      Click <strong className="text-indigo-300">&quot;Ask Gemini: Analyze ECG&quot;</strong> to evaluate the 500-sample voltage waveform for baseline wander, signal noise, and preliminary cardiac rhythm indicators.
                     </p>
                     <button
                       type="button"
@@ -2004,7 +2001,7 @@ export function DoctorEcgViewer({
                       className="mt-1 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/30 text-indigo-200 text-xs font-bold transition cursor-pointer"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                      <span>Ask Gemini: Draft Analysis</span>
+                      <span>Ask Gemini: Analyze ECG</span>
                     </button>
                   </div>
                 )}

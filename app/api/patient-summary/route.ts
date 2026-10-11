@@ -68,16 +68,34 @@ Instructions:
    - Do NOT use bullet points, bold formatting tags, quotation marks, or markdown headers.
    - Keep it concise, accessible, and free of dense medical jargon.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: prompt,
-    });
+    const requestedModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    let summaryText = '';
 
-    const summaryText =
-      response.text?.trim() ||
-      (activePrescriptions.length > 0
-        ? `You have ${activePrescriptions.length} active prescription${activePrescriptions.length > 1 ? 's' : ''} to take today, and your health records are securely stored and up to date.`
-        : 'Welcome back! Your health profile and medical records are up to date and ready whenever you need them.');
+    try {
+      const response = await ai.models.generateContent({
+        model: requestedModel,
+        contents: prompt,
+      });
+      summaryText = response.text?.trim() || '';
+    } catch (modelErr: any) {
+      console.warn(`Initial model ${requestedModel} failed, trying gemini-1.5-flash fallback:`, modelErr?.message);
+      try {
+        const fallbackResponse = await ai.models.generateContent({
+          model: 'gemini-1.5-flash',
+          contents: prompt,
+        });
+        summaryText = fallbackResponse.text?.trim() || '';
+      } catch (fallbackErr: any) {
+        console.warn('Fallback model also failed, using clinical rule fallback:', fallbackErr?.message);
+      }
+    }
+
+    if (!summaryText) {
+      summaryText =
+        activePrescriptions.length > 0
+          ? `You have ${activePrescriptions.length} active prescription${activePrescriptions.length > 1 ? 's' : ''} to take today, and your health records are securely stored and up to date.`
+          : 'Welcome back! Your health profile and medical records are up to date and ready whenever you need them.';
+    }
 
     return NextResponse.json({
       summary: summaryText,

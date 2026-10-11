@@ -161,9 +161,6 @@ export function VitalsMonitor({
   // Manual logging modal state
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [logHr, setLogHr] = useState('75');
-  const [logSpo2, setLogSpo2] = useState('98');
-  const [logSystolic, setLogSystolic] = useState('120');
-  const [logDiastolic, setLogDiastolic] = useState('80');
   const [logNotes, setLogNotes] = useState('');
   const [isLogging, setIsLogging] = useState(false);
   const [logSuccess, setLogSuccess] = useState(false);
@@ -625,10 +622,10 @@ export function VitalsMonitor({
     try {
       await logVitalSign({
         heartRate: Number(logHr) || vitals.bpm || 75,
-        spo2: Number(logSpo2) || 98,
-        temperature: 36.8, // Standard normal baseline for Firestore schema
-        systolic: Number(logSystolic) || 120,
-        diastolic: Number(logDiastolic) || 80,
+        spo2: 98,
+        temperature: 36.8,
+        systolic: 120,
+        diastolic: 80,
         notes: logNotes.trim(),
       });
       setIsLogging(false);
@@ -1136,58 +1133,8 @@ export function VitalsMonitor({
         )}
       </div>
 
-      {/* Auxiliary Biomarkers: Oxygen and Blood Pressure */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Card: SpO2 */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Oxygen Saturation (SpO2)
-            </span>
-            <div className="w-9 h-9 rounded-2xl bg-cyan-50 flex items-center justify-center text-cyan-600">
-              <Droplets className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 font-mono tracking-tight">
-              {initialTelemetry?.spo2 ? initialTelemetry.spo2.toFixed(1) : '98.5'}
-            </span>
-            <span className="text-xs font-bold text-slate-500">%</span>
-          </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-100 text-emerald-800 border-emerald-200">
-              OPTIMAL
-            </span>
-            <span className="text-[11px] text-slate-400 font-medium">Norm: &ge; 95%</span>
-          </div>
-        </div>
 
-        {/* Card: Blood Pressure */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Blood Pressure
-            </span>
-            <div className="w-9 h-9 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600">
-              <Gauge className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 font-mono tracking-tight">
-              {initialTelemetry?.systolic
-                ? `${initialTelemetry.systolic}/${initialTelemetry.diastolic}`
-                : '120/80'}
-            </span>
-            <span className="text-xs font-bold text-slate-500">mmHg</span>
-          </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-teal-50 text-teal-700 border-teal-200">
-              RESTING TARGET
-            </span>
-            <span className="text-[11px] text-slate-400 font-medium">Norm: &lt;120/&lt;80</span>
-          </div>
-        </div>
-      </div>
+
 
       {/* 24-Hour IoT Telemetry Trend Chart */}
       {history.length > 0 && <VitalsChart history={history} />}
@@ -1219,7 +1166,7 @@ export function VitalsMonitor({
             <Heart className="w-6 h-6 text-slate-300 mx-auto mb-2" />
             <p className="text-xs font-semibold text-slate-600">No manual entries recorded yet</p>
             <p className="text-[11px] text-slate-400 max-w-xs mx-auto mt-0.5">
-              Click &quot;Record Entry&quot; above to log heart rate, oxygen saturation, and blood pressure.
+              Click &quot;Record Entry&quot; above to log your heart rate.
             </p>
           </div>
         ) : (
@@ -1229,8 +1176,6 @@ export function VitalsMonitor({
                 <tr>
                   <th className="px-4 py-3">Timestamp</th>
                   <th className="px-4 py-3">Heart Rate</th>
-                  <th className="px-4 py-3">SpO2</th>
-                  <th className="px-4 py-3">Blood Pressure</th>
                   <th className="px-4 py-3">Notes</th>
                 </tr>
               </thead>
@@ -1249,12 +1194,6 @@ export function VitalsMonitor({
                     </td>
                     <td className="px-4 py-3 font-bold text-rose-600 font-mono">
                       {log.heartRate} BPM
-                    </td>
-                    <td className="px-4 py-3 font-bold text-cyan-600 font-mono">
-                      {log.spo2}%
-                    </td>
-                    <td className="px-4 py-3 font-mono text-slate-700">
-                      {log.systolic || '--'}/{log.diastolic || '--'} mmHg
                     </td>
                     <td className="px-4 py-3 text-slate-600 max-w-xs truncate">
                       {log.notes || 'Routine checkup log'}
@@ -1447,66 +1386,20 @@ export function VitalsMonitor({
               </div>
             ) : (
               <form onSubmit={handleLogSubmit} className="p-5 space-y-4 text-xs">
-                {/* 2x2 Grid: Heart Rate & SpO2 */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Heart Rate (BPM)
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min={30}
-                      max={240}
-                      value={logHr}
-                      onChange={(e) => setLogHr(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Oxygen SpO2 (%)
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min={70}
-                      max={100}
-                      value={logSpo2}
-                      onChange={(e) => setLogSpo2(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
-                  </div>
-                </div>
-
-                {/* 2x2 Grid: Systolic BP & Diastolic BP */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Systolic BP (mmHg)
-                    </label>
-                    <input
-                      type="number"
-                      min={60}
-                      max={220}
-                      value={logSystolic}
-                      onChange={(e) => setLogSystolic(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Diastolic BP (mmHg)
-                    </label>
-                    <input
-                      type="number"
-                      min={40}
-                      max={140}
-                      value={logDiastolic}
-                      onChange={(e) => setLogDiastolic(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
-                  </div>
+                {/* Heart Rate */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Heart Rate (BPM)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={30}
+                    max={240}
+                    value={logHr}
+                    onChange={(e) => setLogHr(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
                 </div>
 
                 <div>

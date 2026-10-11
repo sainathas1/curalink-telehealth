@@ -16,22 +16,23 @@ export function EmergencySOS({ variant = 'banner', onOpenModal, className = '' }
   if (variant === 'compact') {
     return (
       <div className={`flex items-center gap-2 ${className}`}>
-        <a
-          href={`tel:${SUPERADMIN_HOTLINE}`}
-          aria-label="Direct call Superadmin Emergency Hotline"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 transition-colors shadow-2xs"
+        <button
+          type="button"
+          onClick={onOpenModal}
+          aria-label="Open Emergency SOS Hotline"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/90 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 hover:border-rose-300 transition-all shadow-2xs active:scale-[0.98] cursor-pointer"
         >
-          <PhoneCall size={13} className="shrink-0" aria-hidden="true" />
-          <span>Call SOS {SUPERADMIN_HOTLINE}</span>
-        </a>
+          <PhoneCall size={13} className="shrink-0 text-rose-600 animate-pulse" aria-hidden="true" />
+          <span>Emergency SOS</span>
+        </button>
         <a
           href={SUPERADMIN_WHATSAPP}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="WhatsApp Superadmin Emergency Hotline"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition-colors shadow-2xs"
+          className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition-all shadow-2xs"
         >
-          <MessageSquare size={13} className="shrink-0" aria-hidden="true" />
+          <MessageSquare size={13} className="shrink-0 text-emerald-600" aria-hidden="true" />
           <span>WhatsApp</span>
         </a>
       </div>

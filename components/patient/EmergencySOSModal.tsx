@@ -123,10 +123,8 @@ export function EmergencySOSModal({
 
         <section aria-label="Device readings" className="rounded-2xl bg-slate-50 p-5">
           <h3 className="flex items-center gap-2 text-sm font-semibold"><HeartPulse className="h-4 w-4 text-slate-500" aria-hidden="true" />Latest device readings</h3>
-          {hasDeviceReadings ? <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
+          {hasDeviceReadings ? <dl className="mt-4 grid grid-cols-1 gap-3 text-sm">
             <div><dt className="text-xs text-slate-500">Heart rate</dt><dd className="mt-1 font-semibold tabular-nums">{reading(telemetry.heartRate, ' bpm')}</dd></div>
-            <div><dt className="text-xs text-slate-500">Oxygen</dt><dd className="mt-1 font-semibold tabular-nums">{reading(telemetry.spo2, '%')}</dd></div>
-            <div><dt className="text-xs text-slate-500">Temperature</dt><dd className="mt-1 font-semibold tabular-nums">{reading(telemetry.temperature, '°C')}</dd></div>
           </dl> : <p className="mt-2 text-sm leading-6 text-slate-500">No live device readings are available.</p>}
           <p className="mt-3 text-xs leading-5 text-slate-500">Readings are not sent to emergency services from this dialog.</p>
         </section>

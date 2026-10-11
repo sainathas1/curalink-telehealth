@@ -125,8 +125,8 @@ export function LandingFooter() {
               </Link>
             </li>
             <li>
-              <Link href="/doctor/iot-hub" className="hover:text-teal-400 transition-colors">
-                ESP32 Firmware Hub
+              <Link href="/patient/vitals" className="hover:text-teal-400 transition-colors">
+                Live ECG Telemetry
               </Link>
             </li>
             <li>

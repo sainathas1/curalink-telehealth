@@ -57,12 +57,12 @@ export function GeminiHealthAssistant({
       });
 
       if (!response.ok) {
-        throw new Error('AI Summary unavailable');
+        throw new Error('AI Summary currently unavailable');
       }
 
       const data = await response.json();
       if (!data || !data.summary) {
-        throw new Error('AI Summary unavailable');
+        throw new Error('AI Summary currently unavailable');
       }
 
       setSummary(data.summary);
@@ -73,7 +73,7 @@ export function GeminiHealthAssistant({
       );
     } catch (err: any) {
       console.warn('Gemini Health Assistant summary notice:', err?.message);
-      setSummary('AI Summary unavailable');
+      setSummary('AI Summary currently unavailable');
     } finally {
       setIsLoading(false);
     }

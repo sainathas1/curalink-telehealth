@@ -19,7 +19,6 @@ import {
   Bell,
   Volume2,
   VolumeX,
-  Thermometer,
   FileText,
   Pill,
   Sparkles,
@@ -58,8 +57,6 @@ export default function PatientProfileRoute() {
     currentUser,
     setAuthenticatedProfile,
     telemetry,
-    temperatureUnit,
-    toggleTemperatureUnit,
     audioAlertsEnabled,
     setAudioAlertsEnabled,
     openEmergencySOS,
@@ -289,7 +286,7 @@ export default function PatientProfileRoute() {
             />
             <span className="font-medium">Wearable Biosensor:</span>
             <span className="font-bold text-white font-mono">
-              {telemetry.heartRate > 0 ? `${telemetry.heartRate} BPM | ${telemetry.spo2}%` : 'Standby'}
+              {telemetry.heartRate > 0 ? `${telemetry.heartRate} BPM` : 'Standby'}
             </span>
           </div>
 
@@ -526,24 +523,6 @@ export default function PatientProfileRoute() {
         </h3>
 
         <div className="bg-white rounded-3xl border border-slate-200/80 divide-y divide-slate-100 shadow-xs overflow-hidden">
-          {/* Temperature Unit */}
-          <div className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center">
-                <Thermometer className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-sm font-bold text-slate-900 block">Temperature Unit</span>
-                <span className="text-xs text-slate-500">Currently {temperatureUnit === 'C' ? 'Celsius (°C)' : 'Fahrenheit (°F)'}</span>
-              </div>
-            </div>
-            <button
-              onClick={toggleTemperatureUnit}
-              className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all m3-pressable cursor-pointer"
-            >
-              Switch to {temperatureUnit === 'C' ? '°F' : '°C'}
-            </button>
-          </div>
 
           {/* Audio Alert Chimes */}
           <div className="p-4 flex items-center justify-between">

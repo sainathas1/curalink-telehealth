@@ -125,7 +125,7 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
   // Vitals state: bpm, leadsOff, ecg
   const [vitals, setVitals] = useState<VitalsState>({
     ecg: 512,
-    bpm: 75,
+    bpm: 0,
     leadsOff: false,
     timestamp: null,
   });
@@ -142,7 +142,7 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
   const isReadingRef = useRef<boolean>(false);
   const latestVitalsRef = useRef<VitalsState>({
     ecg: 512,
-    bpm: 75,
+    bpm: 0,
     leadsOff: false,
   });
 
@@ -559,7 +559,7 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
               ? data.bpm
               : typeof data?.bpm === 'string'
               ? parseFloat(data.bpm)
-              : 75;
+              : 0;
 
           const parsedLeadsOff =
             typeof data?.leadsOff === 'boolean'
@@ -567,6 +567,26 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
               : typeof data?.leadsOff === 'string'
               ? data.leadsOff === 'true'
               : false;
+
+          const waveform = Array.isArray(data?.samples)
+            ? data.samples
+            : Array.isArray(data?.ecgWaveform)
+            ? data.ecgWaveform
+            : null;
+
+          if (waveform && waveform.length > 0) {
+            setEcgData(
+              waveform.slice(-MAX_ECG_POINTS).map((val: number, idx: number) => ({
+                index: idx,
+                ecg: val,
+              }))
+            );
+          } else if (typeof data?.rawAdc === 'number') {
+            setEcgData((prev) => [
+              ...prev.slice(1),
+              { index: prev.length, ecg: data.rawAdc },
+            ]);
+          }
 
           setVitals((prev) => ({
             ...prev,
@@ -577,6 +597,17 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
 
           setLastReceivedAt(Date.now());
           setIsActivelyReceiving(true);
+        } else {
+          setEcgData(
+            Array.from({ length: MAX_ECG_POINTS }, (_, i) => ({ index: i, ecg: 512 }))
+          );
+          setVitals({
+            ecg: 512,
+            bpm: 0,
+            leadsOff: false,
+            timestamp: null,
+          });
+          setIsActivelyReceiving(false);
         }
       },
       (err) => console.warn('Remote telemetry listener notice:', err.message)
@@ -585,20 +616,33 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
     return () => unsub();
   }, [connectionStatus, appointmentId]);
 
-  // Monitor active receiving heartbeat
+  // Monitor active receiving heartbeat & flatline when silent
   useEffect(() => {
     const timer = setInterval(() => {
       const tsMillis = getTimestampMillis(vitals.timestamp) || lastReceivedAt;
       if (tsMillis) {
         const diffSeconds = (Date.now() - tsMillis) / 1000;
-        setIsActivelyReceiving(diffSeconds <= 5);
+        const active = diffSeconds <= 5;
+        setIsActivelyReceiving(active);
+        if (!active && connectionStatus !== 'connected') {
+          setEcgData(
+            Array.from({ length: MAX_ECG_POINTS }, (_, i) => ({ index: i, ecg: 512 }))
+          );
+          setVitals((prev) => ({ ...prev, bpm: 0 }));
+        }
       } else {
         setIsActivelyReceiving(false);
+        if (connectionStatus !== 'connected') {
+          setEcgData(
+            Array.from({ length: MAX_ECG_POINTS }, (_, i) => ({ index: i, ecg: 512 }))
+          );
+          setVitals((prev) => ({ ...prev, bpm: 0 }));
+        }
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [vitals.timestamp, lastReceivedAt]);
+  }, [vitals.timestamp, lastReceivedAt, connectionStatus]);
 
   const isLeadsOff = vitals.leadsOff;
 
@@ -764,14 +808,16 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
 
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-4xl font-black font-mono tracking-tight text-slate-900">
-                {Math.round(vitals.bpm) || '--'}
+                {isActivelyReceiving && vitals.bpm > 0 ? Math.round(vitals.bpm) : '--'}
               </span>
               <span className="text-sm font-bold text-rose-600">BPM</span>
             </div>
 
             <div className="mt-3 border-t border-rose-100/80 pt-2 text-[11px] text-slate-600">
               <span className="font-semibold text-slate-900">
-                {vitals.bpm >= 100
+                {!isActivelyReceiving || vitals.bpm === 0
+                  ? 'Standby (Flatline)'
+                  : vitals.bpm >= 100
                   ? 'Tachycardia Rhythm'
                   : vitals.bpm < 60
                   ? 'Bradycardia Rhythm'
@@ -991,7 +1037,7 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
                       ) : (
                         <>
                           <Sparkles className="size-3 text-amber-300" />
-                          <span>Ask Gemini: Draft Analysis</span>
+                          <span>Ask Gemini: Analyze ECG</span>
                         </>
                       )}
                     </button>
@@ -1129,7 +1175,7 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
                       ) : (
                         <>
                           <Sparkles className="size-3 text-amber-300" />
-                          <span>{modalAiAnalysis ? 'Re-Analyze with Gemini' : 'Ask Gemini: Draft Analysis'}</span>
+                          <span>{modalAiAnalysis ? 'Re-Analyze with Gemini' : 'Ask Gemini: Analyze ECG'}</span>
                         </>
                       )}
                     </button>
@@ -1182,7 +1228,7 @@ export function PatientVitalsCard({ appointmentId, className = '' }: PatientVita
                   <div className="py-4 text-center text-slate-400 text-xs space-y-1">
                     <p>No AI analysis generated for this snapshot yet.</p>
                     <p className="text-[11px] text-slate-500">
-                      Click <strong className="text-indigo-300">&quot;Ask Gemini: Draft Analysis&quot;</strong> to evaluate rhythm stability, baseline wander, and signal noise.
+                      Click <strong className="text-indigo-300">&quot;Ask Gemini: Analyze ECG&quot;</strong> to evaluate rhythm stability, baseline wander, and signal noise.
                     </p>
                   </div>
                 )}

@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { Activity, ArrowRight, CalendarDays, Clock, Droplets, FileText, Heart, LoaderCircle, Pill, Plus, Thermometer, Video, Wifi, WifiOff } from 'lucide-react';
+import { Activity, ArrowRight, CalendarDays, Clock, FileText, Heart, LoaderCircle, Pill, Plus, Video, Wifi, WifiOff } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { Appointment, LiveTelemetryPayload, MedicalRecord, Prescription, UserProfile } from '../../lib/types';
 import { PatientTab } from '../navbar/Sidebar';
 import { useTelehealth } from '../../context/TelehealthContext';
 import { EmergencySOS } from './EmergencySOS';
+import { GeminiHealthAssistant } from './GeminiHealthAssistant';
 
 interface PatientDashboardProps {
   user: UserProfile; telemetry: LiveTelemetryPayload; appointments: Appointment[];
@@ -51,9 +52,6 @@ export function PatientDashboard({ user, telemetry, appointments, prescriptions,
   const formatReading = (value: number | null | undefined, decimals = 0) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value.toFixed(decimals) : '—';
   const readings = [
     { label: 'Heart rate', value: formatReading(hasTelemetry ? telemetry?.heartRate : null), unit: 'bpm', icon: Heart, color: 'bg-rose-50 text-rose-600' },
-    { label: 'Blood oxygen', value: formatReading(hasTelemetry ? telemetry?.spo2 : null), unit: '%', icon: Droplets, color: 'bg-sky-50 text-sky-700' },
-    { label: 'Temperature', value: formatReading(temperature, 1), unit: '°C', icon: Thermometer, color: 'bg-amber-50 text-amber-700' },
-    { label: 'Blood pressure', value: hasTelemetry && (telemetry?.systolic || 0) > 0 && (telemetry?.diastolic || 0) > 0 ? `${telemetry.systolic}/${telemetry.diastolic}` : '—', unit: 'mmHg', icon: Activity, color: 'bg-teal-50 text-teal-700' },
   ];
   const trend = (history || []).filter(point => typeof point?.heartRate === 'number' && Number.isFinite(point.heartRate) && point.heartRate > 0);
   const trendValues = trend.map(point => point.heartRate);
@@ -71,10 +69,7 @@ export function PatientDashboard({ user, telemetry, appointments, prescriptions,
           <LoaderCircle size={17} className="motion-safe:animate-spin text-teal-700" aria-hidden="true" />
           <span>Loading your appointments and care records…</span>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="skeleton h-28 rounded-2xl" />
-          <div className="skeleton h-28 rounded-2xl" />
-          <div className="skeleton h-28 rounded-2xl" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="skeleton h-28 rounded-2xl" />
         </div>
       </div>
@@ -91,6 +86,14 @@ export function PatientDashboard({ user, telemetry, appointments, prescriptions,
         <Plus size={17} />Book a consultation
       </button>
     </div>
+
+    {/* Gemini Health Assistant Widget */}
+    <GeminiHealthAssistant
+      prescriptions={safePrescriptions}
+      records={safeRecords}
+      patientName={firstName}
+      onNavigateTab={onNavigateTab}
+    />
 
     {/* Superadmin Emergency SOS Hotline Banner */}
     <EmergencySOS onOpenModal={onEmergencySOS} />
@@ -136,11 +139,11 @@ export function PatientDashboard({ user, telemetry, appointments, prescriptions,
           </span>
           <h2 className="mt-5 text-xl font-semibold tracking-tight">Your health, connected.</h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            {savedHardware?.temperature !== null && savedHardware ? `Your last temperature reading from ${savedHardware.deviceModel || 'connected device'} is saved to your profile.` : 'Connect a supported device to bring your health readings into view.'}
+            Connect your AD8232 ECG sensor to stream live heart rate telemetry and cardiac rhythm to your doctor.
           </p>
         </div>
         <button type="button" onClick={() => onNavigateTab('vitals')} className="mt-5 flex min-h-11 items-center justify-between rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-teal-800 transition-all hover:bg-teal-50 active:scale-[0.98]">
-          {savedHardware?.temperature !== null && savedHardware ? 'View health vitals' : 'Health monitoring'}
+          Health monitoring (ECG)
           <ArrowRight size={17} />
         </button>
       </section>
@@ -158,7 +161,7 @@ export function PatientDashboard({ user, telemetry, appointments, prescriptions,
           {isSimulating ? 'Simulation' : live ? 'Device connected' : 'No live connection'}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {readings.map(({ label, value, unit, icon: Icon, color }) => (
           <article key={label} className="care-card p-4 sm:p-5">
             <div className="flex items-center justify-between gap-2">
@@ -172,7 +175,7 @@ export function PatientDashboard({ user, telemetry, appointments, prescriptions,
               <span className="text-xs text-slate-500">{unit}</span>
             </p>
             <p className="mt-2 text-xs text-slate-500">
-              {value === '—' ? 'No reading received' : label === 'Temperature' && savedHardware?.syncedAt ? 'Last saved on your profile' : 'Last received reading'}
+              {value === '—' ? 'No reading received' : 'Last received telemetry reading'}
             </p>
           </article>
         ))}

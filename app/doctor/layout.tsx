@@ -9,7 +9,6 @@ import { MobileNav } from '../../components/navbar/MobileNav';
 import { PortalGate } from '../../components/navbar/PortalGate';
 import { VideoCallModal } from '../../components/doctor/VideoCallModal';
 import { EHRPrescriptionModal } from '../../components/doctor/EHRPrescriptionModal';
-import { HardwareSimulatorDrawer } from '../../components/iot/HardwareSimulatorDrawer';
 import { ESP32GuideModal } from '../../components/iot/ESP32GuideModal';
 import { AuthModal } from '../../components/auth/AuthModal';
 import { ErrorBoundary } from '../../components/ui/ErrorBoundary';
@@ -69,7 +68,6 @@ export default function DoctorLayout({ children }: { children: ReactNode }) {
       <MobileNav role="Doctor" activeTab={activeTab} onSelectTab={handleSelectTab} activeAlertCount={criticalCount} />
       <VideoCallModal isOpen={isVideoCallOpen} onClose={closeVideoCall} appointment={activeCallAppointment} telemetry={telemetry} onOpenEHR={() => { if (activeCallAppointment) openEHR(activeCallAppointment.patientName, activeCallAppointment.patientId); }} doctorName={currentUser.fullName} role="Doctor" currentUser={currentUser} />
       <EHRPrescriptionModal isOpen={isEHRModalOpen} onClose={closeEHR} onIssuePrescription={addPrescription} defaultPatientName={targetEhrPatientName} defaultPatientId={targetEhrPatientId} doctorId={currentUser.uid} doctorName={currentUser.fullName} doctorLicense={currentUser.licenseNumber || ''} patientDirectory={patientDirectory} />
-      <HardwareSimulatorDrawer isOpen={isSimulatorDrawerOpen} onClose={closeSimulator} isSimulating={isSimulating} onToggleSimulating={() => setIsSimulating(!isSimulating)} simulationMode={simulationMode} onChangeMode={changeSimulationMode} telemetry={telemetry} onOpenCodeGuide={openESP32Guide} />
       <ESP32GuideModal isOpen={isESP32GuideOpen} onClose={closeESP32Guide} patientId={telemetry.patientId || 'patient_live'} />
       {authModal}
     </div>

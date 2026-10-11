@@ -6,6 +6,6 @@ import { MultiPatientMonitor } from '../../../components/doctor/MultiPatientMoni
 
 export default function DoctorWardRoute() {
   const router = useRouter();
-  const { patientDirectory, telemetry, openEHR, openSimulator } = useTelehealth();
-  return <MultiPatientMonitor patients={patientDirectory} liveTelemetry={telemetry} onStartVideoCall={(appointment) => router.push('/call/' + appointment.id)} onOpenEHR={openEHR} onOpenSimulator={openSimulator} />;
+  const { patientDirectory, telemetry, openEHR } = useTelehealth();
+  return <MultiPatientMonitor patients={patientDirectory} liveTelemetry={telemetry} onStartVideoCall={(appointment) => router.push('/call/' + appointment.id)} onOpenEHR={openEHR} />;
 }

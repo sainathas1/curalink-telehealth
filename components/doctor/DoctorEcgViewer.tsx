@@ -656,6 +656,9 @@ export function DoctorEcgViewer({
     };
   }, [activeScreen, isLiveActive, liveTelemetry, drawLiveOscilloscope]);
 
+  // DOM Ref for AI Analysis Box to scroll into view
+  const aiAnalysisContainerRef = useRef<HTMLDivElement | null>(null);
+
   // Sync doctor notes & AI analysis when selected reading changes
   useEffect(() => {
     if (selectedReading) {
@@ -663,7 +666,10 @@ export function DoctorEcgViewer({
       setNotesSuccess(false);
       setPlaybackIndex(selectedReading.ecgWaveform?.length || 500);
       setIsPlaying(false);
-      setAiAnalysisResult(selectedReading.aiAnalysis || null);
+      // Only sync aiAnalysis from selectedReading if not currently analyzing
+      if (!isAnalyzingWithAi) {
+        setAiAnalysisResult(selectedReading.aiAnalysis || null);
+      }
       setAiAnalysisError(null);
       setAiAnalysisTimestamp(
         selectedReading.aiAnalyzedAt
@@ -675,7 +681,7 @@ export function DoctorEcgViewer({
           : null
       );
     }
-  }, [selectedReading]);
+  }, [selectedReading, isAnalyzingWithAi]);
 
   // Filtered waveform points (baseline centering if enabled)
   const processedWaveform = useMemo(() => {
@@ -1023,6 +1029,9 @@ export function DoctorEcgViewer({
       return;
     }
 
+    // Switch view to saved readings screen so the snapshot & AI box are active
+    setActiveScreen('saved');
+
     // Immediately focus on target reading so the main oscilloscope graph displays it
     if (readingToAnalyze.id !== selectedReading?.id) {
       setSelectedReading(readingToAnalyze);
@@ -1031,6 +1040,11 @@ export function DoctorEcgViewer({
     setIsAnalyzingWithAi(true);
     setAnalyzingReadingId(readingToAnalyze.id);
     setAiAnalysisError(null);
+
+    // Smooth scroll to AI box so clinician sees loading spinner
+    setTimeout(() => {
+      aiAnalysisContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
 
     try {
       const response = await fetch('/api/analyze-ecg', {
@@ -1054,27 +1068,51 @@ export function DoctorEcgViewer({
         throw new Error(data.error || 'Failed to analyze ECG with Gemini.');
       }
 
-      setAiAnalysisResult(data.analysis);
-      setAiAnalysisTimestamp(
-        new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        })
+      const analysisText = typeof data.analysis === 'string' ? data.analysis : String(data.analysis || '');
+      setAiAnalysisResult(analysisText);
+      const timestampStr = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+      setAiAnalysisTimestamp(timestampStr);
+
+      // Save to local reading state immediately so it renders reliably
+      setSelectedReading((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          aiAnalysis: analysisText,
+          aiAnalyzedAt: Date.now(),
+        };
+      });
+
+      setSavedReadings((prev) =>
+        prev.map((r) =>
+          r.id === readingToAnalyze.id
+            ? { ...r, aiAnalysis: analysisText, aiAnalyzedAt: Date.now() }
+            : r
+        )
       );
 
+      // Smooth scroll to view completed analysis
+      setTimeout(() => {
+        aiAnalysisContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 150);
+
       // Persist analysis to Firestore reading document if reading has an ID
-      if (selectedAppointmentId && readingToAnalyze.id) {
+      const targetApptId = readingToAnalyze.appointmentId || selectedAppointmentId;
+      if (targetApptId && readingToAnalyze.id) {
         try {
           const readingDocRef = doc(
             db,
             'appointments',
-            selectedAppointmentId,
+            targetApptId,
             'saved_readings',
             readingToAnalyze.id
           );
           await updateDoc(readingDocRef, {
-            aiAnalysis: data.analysis,
+            aiAnalysis: analysisText,
             aiAnalyzedAt: serverTimestamp(),
           });
         } catch (dbErr) {
@@ -1852,7 +1890,10 @@ export function DoctorEcgViewer({
               </div>
 
               {/* 3. AI-Assisted Pre-Screening Clinical Box (Gemini 3.8 Flash) */}
-              <div className="rounded-2xl border border-indigo-500/30 bg-gradient-to-b from-indigo-950/25 via-slate-900/60 to-slate-950/80 p-5 space-y-4 shadow-xl backdrop-blur-md relative overflow-hidden">
+              <div
+                ref={aiAnalysisContainerRef}
+                className="rounded-2xl border border-indigo-500/30 bg-gradient-to-b from-indigo-950/25 via-slate-900/60 to-slate-950/80 p-5 space-y-4 shadow-xl backdrop-blur-md relative overflow-hidden"
+              >
                 {/* Top decorative accent gradient line */}
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-400 via-indigo-500 to-purple-500" />
 
@@ -1969,7 +2010,7 @@ export function DoctorEcgViewer({
                     </div>
                   </div>
                 ) : aiAnalysisResult ? (
-                  <div className="rounded-xl bg-slate-950/80 border border-slate-800/80 p-4 shadow-inner">
+                  <div className="rounded-xl bg-slate-950/80 border border-slate-800/80 p-4 shadow-inner max-h-96 overflow-y-auto">
                     <FormattedAiAnalysis content={aiAnalysisResult} />
                   </div>
                 ) : (

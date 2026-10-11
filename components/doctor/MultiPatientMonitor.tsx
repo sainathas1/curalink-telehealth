@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Activity, FileText, Heart, Search, Sliders, Video } from 'lucide-react';
+import { Activity, FileText, Heart, Search, Video } from 'lucide-react';
 import type { Appointment, LiveTelemetryPayload, PatientDirectoryItem } from '../../lib/types';
 import { useTelehealth } from '../../context/TelehealthContext';
 import { activeAppointmentStatuses, ClinicalNoteDialog, fieldClass, hasRecordedVitals, timestampValue, WorkspaceDataNotice } from './DoctorWorkspaceSupport';
@@ -11,10 +11,10 @@ interface MultiPatientMonitorProps {
   liveTelemetry?: LiveTelemetryPayload;
   onStartVideoCall: (appointment: Appointment) => void;
   onOpenEHR: (patientName: string, patientId?: string) => void;
-  onOpenSimulator: () => void;
+  onOpenSimulator?: () => void;
 }
 
-export function MultiPatientMonitor({ onStartVideoCall, onOpenEHR, onOpenSimulator }: MultiPatientMonitorProps) {
+export function MultiPatientMonitor({ onStartVideoCall, onOpenEHR }: MultiPatientMonitorProps) {
   const { patientDirectory, doctorAppointmentsQueue, dataLoading } = useTelehealth();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'All' | 'With readings' | 'No readings' | 'Needs attention'>('All');
@@ -27,7 +27,13 @@ export function MultiPatientMonitor({ onStartVideoCall, onOpenEHR, onOpenSimulat
   const stats = [['Patients with ECG readings', withReadings.length], ['Need attention', needsAttention.length], ['Awaiting ECG telemetry', directory.length - withReadings.length]];
 
   return <div className="mx-auto max-w-7xl space-y-6">
-    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="care-eyebrow mb-2">Connected to your patients</p><h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">ECG Patient Monitoring</h1><p className="mt-2 text-sm text-slate-500">Continuous AD8232 ECG telemetry and real-time Heart Rate (BPM) monitoring.</p></div><button type="button" onClick={onOpenSimulator} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 focus-visible:outline-2 focus-visible:outline-teal-700"><Sliders size={16} aria-hidden="true" />Open simulator</button></div>
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+      <div>
+        <p className="care-eyebrow mb-2">Connected to your patients</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">ECG Patient Monitoring</h1>
+        <p className="mt-2 text-sm text-slate-500">Continuous AD8232 ECG telemetry and real-time Heart Rate (BPM) monitoring.</p>
+      </div>
+    </div>
     <WorkspaceDataNotice />
     <div className="grid gap-4 sm:grid-cols-3">{stats.map(([label, value]) => <div key={label} className="care-card p-5"><p className="text-xs text-slate-500">{label}</p><p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">{dataLoading ? '—' : value}</p></div>)}</div>
     <div className="care-card flex flex-col gap-4 p-4 sm:flex-row sm:items-center"><div className="relative flex-1"><label htmlFor="monitor-search" className="sr-only">Search monitored patients</label><Search size={17} className="absolute left-3 top-3.5 text-slate-400" aria-hidden="true" /><input id="monitor-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search patient name" className={fieldClass + ' pl-9'} /></div><div className="flex flex-wrap gap-1 rounded-xl bg-slate-50 p-1" aria-label="Filter patient readings">{(['All', 'With readings', 'No readings', 'Needs attention'] as const).map((value) => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)} className={`min-h-9 rounded-lg px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-teal-700 ${filter === value ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-500'}`}>{value}</button>)}</div></div>

@@ -237,6 +237,15 @@ export function DoctorEcgViewer({
   const [aiAnalysisTimestamp, setAiAnalysisTimestamp] = useState<string | null>(null);
   const [copiedAiText, setCopiedAiText] = useState<boolean>(false);
 
+  // Live Patient Telemetry Stream (BPM & Leads Off from appointments/{selectedAppointmentId}/telemetry/live)
+  const [liveTelemetry, setLiveTelemetry] = useState<{
+    bpm: number;
+    leadsOff: boolean;
+    timestamp?: any;
+  } | null>(null);
+  const [isLiveActive, setIsLiveActive] = useState<boolean>(false);
+  const [lastLiveReceivedAt, setLastLiveReceivedAt] = useState<number | null>(null);
+
   // Canvas Reference
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -306,6 +315,81 @@ export function DoctorEcgViewer({
       setLoading(false);
     }
   }, [selectedAppointmentId]);
+
+  // Real-time Firestore Listener for live patient telemetry: appointments/{selectedAppointmentId}/telemetry/live
+  useEffect(() => {
+    if (!selectedAppointmentId) {
+      setLiveTelemetry(null);
+      setIsLiveActive(false);
+      return;
+    }
+
+    try {
+      const liveDocRef = doc(db, 'appointments', selectedAppointmentId, 'telemetry', 'live');
+      const unsub = onSnapshot(
+        liveDocRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            const parsedBpm =
+              typeof data.bpm === 'number'
+                ? data.bpm
+                : typeof data.bpm === 'string'
+                ? parseFloat(data.bpm)
+                : 0;
+
+            const parsedLeadsOff =
+              typeof data.leadsOff === 'boolean'
+                ? data.leadsOff
+                : typeof data.leadsOff === 'string'
+                ? data.leadsOff === 'true'
+                : false;
+
+            setLiveTelemetry({
+              bpm: parsedBpm,
+              leadsOff: parsedLeadsOff,
+              timestamp: data.timestamp,
+            });
+            setLastLiveReceivedAt(Date.now());
+            setIsLiveActive(true);
+          }
+        },
+        (err) => {
+          console.warn('DoctorEcgViewer live telemetry notice:', err.message);
+        }
+      );
+
+      return () => unsub();
+    } catch (err) {
+      console.warn('DoctorEcgViewer live telemetry setup error:', err);
+    }
+  }, [selectedAppointmentId]);
+
+  // Heartbeat check: determines whether patient is actively transmitting live data
+  useEffect(() => {
+    if (!liveTelemetry) return;
+    const timer = setInterval(() => {
+      let tsMillis = lastLiveReceivedAt;
+      if (liveTelemetry?.timestamp) {
+        if (typeof liveTelemetry.timestamp.toMillis === 'function') {
+          tsMillis = liveTelemetry.timestamp.toMillis();
+        } else if (typeof liveTelemetry.timestamp.seconds === 'number') {
+          tsMillis = liveTelemetry.timestamp.seconds * 1000;
+        } else if (liveTelemetry.timestamp instanceof Date) {
+          tsMillis = liveTelemetry.timestamp.getTime();
+        }
+      }
+
+      if (tsMillis) {
+        const diffSecs = (Date.now() - tsMillis) / 1000;
+        setIsLiveActive(diffSecs <= 6);
+      } else {
+        setIsLiveActive(false);
+      }
+    }, 1500);
+
+    return () => clearInterval(timer);
+  }, [liveTelemetry, lastLiveReceivedAt]);
 
   // Sync doctor notes & AI analysis when selected reading changes
   useEffect(() => {
@@ -763,13 +847,26 @@ export function DoctorEcgViewer({
             <Activity className="h-5 w-5 animate-pulse" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base font-bold tracking-tight text-white truncate">
                 Clinical ECG Diagnostics
               </h2>
               <span className="rounded-md bg-teal-500/10 px-2 py-0.5 text-[10px] font-mono font-bold text-teal-300 border border-teal-500/30">
                 AD8232 · 50Hz
               </span>
+              {liveTelemetry && isLiveActive && (
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] font-mono font-bold border ${
+                    liveTelemetry.leadsOff
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  LIVE STREAM: {Math.round(liveTelemetry.bpm)} BPM ·{' '}
+                  {liveTelemetry.leadsOff ? 'LEADS OFF' : 'LEADS ATTACHED'}
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400 truncate flex items-center gap-2 mt-0.5">
               <span>Patient: <strong className="text-slate-200">{effectivePatientName}</strong></span>

@@ -9,6 +9,7 @@ import { useTelehealth } from '../../context/TelehealthContext';
 import { formatAppointmentDate } from '../patient/BookAppointmentModal';
 import { activeAppointmentStatuses, ClinicalNoteDialog, clinicDate, normalizeWorkspaceRecords, WorkspaceDataNotice } from './DoctorWorkspaceSupport';
 import { DoctorEcgViewer } from './DoctorEcgViewer';
+import { DoctorLiveTelemetryHUD } from '../iot/DoctorLiveTelemetryHUD';
 
 interface DoctorDashboardProps {
   doctor: UserProfile;
@@ -185,6 +186,18 @@ export function DoctorDashboard({ doctor, onNavigateTab, onStartVideoCall, onOpe
                       <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
                         {appointment.symptoms}
                       </p>
+                    )}
+
+                    {/* Live ECG Telemetry HUD (BPM & Leads Status streamed from patient) */}
+                    {active && (
+                      <div className="mt-3">
+                        <DoctorLiveTelemetryHUD
+                          appointmentId={appointment.id}
+                          patientName={patientName}
+                          isDoctor={true}
+                          onViewWaveform={() => setViewingEcgAppointment({ id: appointment.id, patientName })}
+                        />
+                      </div>
                     )}
                     <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
                       <button
